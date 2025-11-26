@@ -20,10 +20,10 @@ func TestBoardModelBlackbox(t *testing.T) {
 	issues := []model.Issue{
 		{ID: "1", Status: model.StatusOpen, Priority: 1, CreatedAt: createTime(0)},
 	}
-	
+
 	theme := ui.DefaultTheme(lipgloss.NewRenderer(os.Stdout))
 	b := ui.NewBoardModel(issues, theme)
-	
+
 	// Focus Open col (0)
 	sel := b.SelectedIssue()
 	if sel == nil || sel.ID != "1" {
