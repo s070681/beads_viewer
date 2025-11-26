@@ -8,6 +8,9 @@ import (
 type Insights struct {
 	Bottlenecks    []string // Top betweenness nodes
 	Keystones      []string // Top impact nodes
+	Influencers    []string // Top eigenvector centrality
+	Hubs           []string // Strong dependency aggregators
+	Authorities    []string // Strong prerequisite providers
 	Orphans        []string // No dependencies (and not blocked?) - Leaf nodes
 	Cycles         [][]string
 	ClusterDensity float64
@@ -18,6 +21,9 @@ func (s GraphStats) GenerateInsights(limit int) Insights {
 	return Insights{
 		Bottlenecks:    getTopKeys(s.Betweenness, limit),
 		Keystones:      getTopKeys(s.CriticalPathScore, limit),
+		Influencers:    getTopKeys(s.Eigenvector, limit),
+		Hubs:           getTopKeys(s.Hubs, limit),
+		Authorities:    getTopKeys(s.Authorities, limit),
 		Cycles:         s.Cycles,
 		ClusterDensity: s.Density,
 	}
@@ -32,11 +38,11 @@ func getTopKeys(m map[string]float64, limit int) []string {
 	for k, v := range m {
 		ss = append(ss, kv{k, v})
 	}
-	
+
 	sort.Slice(ss, func(i, j int) bool {
 		return ss[i].Value > ss[j].Value
 	})
-	
+
 	var result []string
 	for i := 0; i < len(ss) && i < limit; i++ {
 		result = append(result, ss[i].Key)

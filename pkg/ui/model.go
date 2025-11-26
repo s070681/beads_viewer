@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	SplitViewThreshold = 100
-	WideViewThreshold  = 140
+	SplitViewThreshold     = 100
+	WideViewThreshold      = 140
 	UltraWideViewThreshold = 180
 )
 
@@ -55,25 +55,25 @@ type Model struct {
 	renderer      *glamour.TermRenderer
 	board         BoardModel
 	insightsPanel InsightsModel
-	
+
 	// Update State
 	updateAvailable bool
 	updateTag       string
 	updateURL       string
-	
+
 	// State
-	focused       focus
-	isSplitView   bool
-	isBoardView   bool
-	showDetails   bool
-	ready         bool
-	width         int
-	height        int
-	
+	focused     focus
+	isSplitView bool
+	isBoardView bool
+	showDetails bool
+	ready       bool
+	width       int
+	height      int
+
 	// Filter state
 	currentFilter string // "all", "open", "closed", "ready"
 	searchTerm    string // simple fuzzy search buffer (future enhancement)
-	
+
 	// Stats
 	countOpen    int
 	countReady   int
@@ -84,10 +84,7 @@ type Model struct {
 func NewModel(issues []model.Issue) Model {
 	// Build map
 	issueMap := make(map[string]*model.Issue)
-	
-	// Count stats
-	var cOpen, cReady, cBlocked, cClosed int
-	
+
 	// Sort issues: Open first, then by Priority
 	sort.Slice(issues, func(i, j int) bool {
 		iClosed := issues[i].Status == "closed"
@@ -101,84 +98,50 @@ func NewModel(issues []model.Issue) Model {
 		return issues[i].CreatedAt.After(issues[j].CreatedAt)
 	})
 
-	// Graph Analysis
+	// Graph Analysis (single pass)
 	analyzer := analysis.NewAnalyzer(issues)
 	graphStats := analyzer.Analyze()
 
 	items := make([]list.Item, len(issues))
 	for i, issue := range issues {
 		issueMap[issue.ID] = &issues[i]
-		
+
 		pr := graphStats.PageRank[issue.ID]
 		imp := graphStats.CriticalPathScore[issue.ID]
-		
+
 		items[i] = IssueItem{
 			Issue:      issue,
 			GraphScore: pr,
 			Impact:     imp,
 		}
 	}
-	
-	// Re-calc stats accurately now that map is full
-	cOpen, cReady, cBlocked, cClosed = 0, 0, 0, 0
-	for _, issue := range issues {
-		if issue.Status == model.StatusClosed {
-			cClosed++
-		} else {
-			cOpen++
-			if issue.Status == model.StatusBlocked {
-				cBlocked++
-			} else {
-				// Check if blocked by dependencies
-				isBlocked := false
-				for _, dep := range issue.Dependencies {
-					if dep.Type == model.DepBlocks {
-						blocker, exists := issueMap[dep.DependsOnID]
-						// If dependency doesn't exist, we assume not blocked? Or blocked by phantom?
-						// Usually assume blocked if dep is missing? No, if missing, can't complete?
-						// Let's assume: If blocker exists and is NOT closed, then blocked.
-						if exists && blocker.Status != model.StatusClosed {
-							isBlocked = true
-							break
-						}
-					}
-				}
-				if !isBlocked {
-					cReady++
-				}
-			}
-		}
-	}
-	cOpen, cReady, cBlocked, cClosed = 0, 0, 0, 0
-	for _, issue := range issues {
-		if issue.Status == model.StatusClosed {
-			cClosed++
-		} else {
-			cOpen++
-			if issue.Status == model.StatusBlocked {
-				cBlocked++
-			} else {
-				// Check if blocked by dependencies
-				isBlocked := false
-				for _, dep := range issue.Dependencies {
-					if dep.Type == model.DepBlocks {
-						blocker, exists := issueMap[dep.DependsOnID]
-						if exists && blocker.Status != model.StatusClosed {
-							isBlocked = true
-							break
-						}
-					}
-				}
-				if !isBlocked {
-					cReady++
-				}
-			}
-		}
-	}
 
-	// Graph Analysis
-	analyzer = analysis.NewAnalyzer(issues)
-	graphStats = analyzer.Analyze()
+	// Stats
+	cOpen, cReady, cBlocked, cClosed := 0, 0, 0, 0
+	for _, issue := range issues {
+		if issue.Status == model.StatusClosed {
+			cClosed++
+			continue
+		}
+		cOpen++
+		if issue.Status == model.StatusBlocked {
+			cBlocked++
+			continue
+		}
+		isBlocked := false
+		for _, dep := range issue.Dependencies {
+			if dep.Type != model.DepBlocks {
+				continue
+			}
+			if blocker, exists := issueMap[dep.DependsOnID]; exists && blocker.Status != model.StatusClosed {
+				isBlocked = true
+				break
+			}
+		}
+		if !isBlocked {
+			cReady++
+		}
+	}
 
 	// Default delegate
 	delegate := IssueDelegate{Tier: TierCompact}
@@ -188,16 +151,16 @@ func NewModel(issues []model.Issue) Model {
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(true) // Enable default fuzzy filter
 	l.DisableQuitKeybindings()
-	
+
 	// Glamour renderer with Dark Style
 	r, _ := glamour.NewTermRenderer(
 		glamour.WithAutoStyle(),
 		glamour.WithWordWrap(80),
 	)
-	
+
 	// Initialize Board
 	board := NewBoardModel(issues)
-	
+
 	// Initialize Insights
 	ins := graphStats.GenerateInsights(10)
 	insightsPanel := NewInsightsModel(ins)
@@ -217,7 +180,7 @@ func NewModel(issues []model.Issue) Model {
 		countBlocked:  cBlocked,
 		countClosed:   cClosed,
 	}
-	
+
 	m.applyFilter()
 	return m
 }
@@ -238,7 +201,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Maybe show a toast or just status bar indicator?
 		// For "asks the user", we can trigger a modal or just show prominently.
 		// A slick way is to change the Title or Footer.
-		
+
 	case tea.KeyMsg:
 		// Filtering Keybindings (only when not filtering in list)
 		if m.list.FilterState() != list.Filtering {
@@ -305,7 +268,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						// Finding index is slow.
 						// Let's just update viewport manually and switch focus to detail if split view.
 						// Or just switch back to list view but filtered?
-						
+
 						// Simple hack: Switch back to list view, select correct item
 						// requires linear scan
 						for i, item := range m.list.Items() {
@@ -354,19 +317,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.isSplitView = msg.Width > SplitViewThreshold
-		
+
 		m.ready = true
-		
+
 		// Layout calculations
 		headerHeight := 1 // Status bar
 		availableHeight := msg.Height - headerHeight
-		
+
 		var listWidth int
-		
+
 		if m.isSplitView {
 			listWidth = int(float64(msg.Width) * 0.4)
 			detailWidth := msg.Width - listWidth - 4 // margins
-			
+
 			m.list.SetSize(listWidth, availableHeight)
 			m.viewport = viewport.New(detailWidth, availableHeight-2) // -2 for border
 		} else {
@@ -374,7 +337,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.list.SetSize(msg.Width, availableHeight)
 			m.viewport = viewport.New(msg.Width, availableHeight-2)
 		}
-		
+
 		// Adaptive Delegate Tier based on List Width
 		var tier Tier
 		if listWidth > 120 {
@@ -387,26 +350,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			tier = TierCompact
 		}
 		m.list.SetDelegate(IssueDelegate{Tier: tier})
-		
+
 		if m.isSplitView {
 			m.renderer, _ = glamour.NewTermRenderer(
 				glamour.WithAutoStyle(),
 				glamour.WithWordWrap(m.viewport.Width),
 			)
 		}
-		
+
 		m.insightsPanel.SetSize(m.width, m.height-headerHeight)
-		
+
 		m.updateViewportContent()
 	}
-	
+
 	// Always update list (handles filtering input)
 	m.list, cmd = m.list.Update(msg)
 	cmds = append(cmds, cmd)
-	
+
 	// Update viewport if list selection changed in split view
 	if m.isSplitView && m.focused == focusList {
-		// Check if selection actually changed to avoid re-rendering cost? 
+		// Check if selection actually changed to avoid re-rendering cost?
 		// For now just update, it's fast enough.
 		m.updateViewportContent()
 	}
@@ -428,7 +391,7 @@ func (m Model) View() string {
 	} else if m.isSplitView {
 		// Split View
 		var listStyle, detailStyle lipgloss.Style
-		
+
 		if m.focused == focusList {
 			listStyle = FocusedPanelStyle
 			detailStyle = PanelStyle
@@ -436,10 +399,10 @@ func (m Model) View() string {
 			listStyle = PanelStyle
 			detailStyle = FocusedPanelStyle
 		}
-		
-		listView := listStyle.Width(m.list.Width()).Height(m.height-2).Render(m.list.View())
-		detailView := detailStyle.Width(m.viewport.Width+2).Height(m.height-2).Render(m.viewport.View())
-		
+
+		listView := listStyle.Width(m.list.Width()).Height(m.height - 2).Render(m.list.View())
+		detailView := detailStyle.Width(m.viewport.Width + 2).Height(m.height - 2).Render(m.viewport.View())
+
 		body = lipgloss.JoinHorizontal(lipgloss.Top, listView, detailView)
 	} else {
 		// Mobile View
@@ -449,10 +412,10 @@ func (m Model) View() string {
 			body = m.list.View()
 		}
 	}
-	
+
 	// Footer / Status Bar
 	footer := m.renderFooter()
-	
+
 	return lipgloss.JoinVertical(lipgloss.Left, body, footer)
 }
 
@@ -460,21 +423,25 @@ func (m *Model) renderFooter() string {
 	filterStyle := lipgloss.NewStyle().Foreground(ColorText).Bold(true)
 	helpStyle := lipgloss.NewStyle().Foreground(ColorSubtext)
 	countStyle := lipgloss.NewStyle().Foreground(ColorSecondary).Padding(0, 1)
-	
+
 	var filterTxt string
 	switch m.currentFilter {
-	case "all": filterTxt = "ALL"
-	case "open": filterTxt = "OPEN"
-	case "closed": filterTxt = "CLOSED"
-	case "ready": filterTxt = "READY"
+	case "all":
+		filterTxt = "ALL"
+	case "open":
+		filterTxt = "OPEN"
+	case "closed":
+		filterTxt = "CLOSED"
+	case "ready":
+		filterTxt = "READY"
 	}
-	
-	status := fmt.Sprintf(" Filter: %s ", filterTxt) 
+
+	status := fmt.Sprintf(" Filter: %s ", filterTxt)
 	count := fmt.Sprintf("%d issues", len(m.list.Items()))
-	
+
 	// Stats block
 	stats := fmt.Sprintf(" Open:%d Ready:%d Blocked:%d Closed:%d ", m.countOpen, m.countReady, m.countBlocked, m.countClosed)
-	
+
 	// Update block
 	updateTxt := ""
 	if m.updateAvailable {
@@ -499,33 +466,35 @@ func (m *Model) renderFooter() string {
 			}
 		}
 	}
-	
+
 	statusSection := filterStyle.Background(ColorPrimary).Padding(0, 1).Render(status)
 	updateSection := lipgloss.NewStyle().Background(ColorTypeFeature).Foreground(ColorBg).Bold(true).Render(updateTxt)
 	statsSection := lipgloss.NewStyle().Background(ColorBgHighlight).Foreground(ColorText).Render(stats)
 	countSection := countStyle.Render(count)
 	keysSection := helpStyle.Padding(0, 1).Render(keys)
-	
+
 	// Fill remaining space
 	barWidth := m.width
 	// left: status + update + stats
 	// right: count + keys
 	// middle: filler
-	
+
 	leftWidth := lipgloss.Width(statusSection) + lipgloss.Width(updateSection) + lipgloss.Width(statsSection)
 	rightWidth := lipgloss.Width(countSection) + lipgloss.Width(keysSection)
-	
+
 	remaining := barWidth - leftWidth - rightWidth
-	if remaining < 0 { remaining = 0 }
+	if remaining < 0 {
+		remaining = 0
+	}
 	filler := lipgloss.NewStyle().Background(ColorBgDark).Width(remaining).Render("")
-	
+
 	return lipgloss.JoinHorizontal(lipgloss.Bottom, statusSection, updateSection, statsSection, filler, countSection, keysSection)
 }
 
 func (m *Model) applyFilter() {
 	var filteredItems []list.Item
 	var filteredIssues []model.Issue
-	
+
 	for _, issue := range m.issues {
 		include := false
 		switch m.currentFilter {
@@ -561,7 +530,7 @@ func (m *Model) applyFilter() {
 		if include {
 			pr := m.analysis.PageRank[issue.ID]
 			imp := m.analysis.CriticalPathScore[issue.ID]
-			
+
 			filteredItems = append(filteredItems, IssueItem{
 				Issue:      issue,
 				GraphScore: pr,
@@ -570,10 +539,10 @@ func (m *Model) applyFilter() {
 			filteredIssues = append(filteredIssues, issue)
 		}
 	}
-	
+
 	m.list.SetItems(filteredItems)
 	m.board.SetIssues(filteredIssues)
-	
+
 	if len(filteredItems) > 0 {
 		if m.list.Index() >= len(filteredItems) {
 			m.list.Select(0)
@@ -589,7 +558,7 @@ func (m *Model) updateViewportContent() {
 		return
 	}
 	item := selectedItem.(IssueItem).Issue
-	
+
 	var sb strings.Builder
 
 	if m.updateAvailable {
@@ -598,25 +567,29 @@ func (m *Model) updateViewportContent() {
 
 	// Title Block
 	sb.WriteString(fmt.Sprintf("# %s %s\n", GetTypeIconMD(string(item.IssueType)), item.Title))
-	
+
 	// Meta Table
 	sb.WriteString(fmt.Sprintf("| ID | Status | Priority | Assignee | Created |\n|---|---|---|---|---|\n"))
-	sb.WriteString(fmt.Sprintf("| **%s** | **%s** | %s | @%s | %s |\n\n", 
-		item.ID, 
-		strings.ToUpper(string(item.Status)), 
+	sb.WriteString(fmt.Sprintf("| **%s** | **%s** | %s | @%s | %s |\n\n",
+		item.ID,
+		strings.ToUpper(string(item.Status)),
 		GetPriorityIcon(item.Priority),
 		item.Assignee,
 		item.CreatedAt.Format("2006-01-02"),
 	))
-	
+
 	// Graph Analysis
 	pr := m.analysis.PageRank[item.ID]
 	bt := m.analysis.Betweenness[item.ID]
 	imp := m.analysis.CriticalPathScore[item.ID]
-	
+	ev := m.analysis.Eigenvector[item.ID]
+	hub := m.analysis.Hubs[item.ID]
+	auth := m.analysis.Authorities[item.ID]
+
 	sb.WriteString("### Graph Analysis\n")
-	sb.WriteString(fmt.Sprintf("- **Impact Depth**: %.0f (Length of downstream dependency chain)\n", imp))
-	sb.WriteString(fmt.Sprintf("- **Centrality**: %.4f (PageRank), %.4f (Betweenness)\n\n", pr, bt))
+	sb.WriteString(fmt.Sprintf("- **Impact Depth**: %.0f (downstream chain length)\n", imp))
+	sb.WriteString(fmt.Sprintf("- **Centrality**: PR %.4f • BW %.4f • EV %.4f\n", pr, bt, ev))
+	sb.WriteString(fmt.Sprintf("- **Flow Role**: Hub %.4f • Authority %.4f\n\n", hub, auth))
 
 	// Description
 	if item.Description != "" {
@@ -629,13 +602,13 @@ func (m *Model) updateViewportContent() {
 		sb.WriteString("### Acceptance Criteria\n")
 		sb.WriteString(item.AcceptanceCriteria + "\n\n")
 	}
-	
+
 	// Notes
 	if item.Notes != "" {
 		sb.WriteString("### Notes\n")
 		sb.WriteString(item.Notes + "\n\n")
 	}
-	
+
 	// Dependency Graph (Tree)
 	if len(item.Dependencies) > 0 {
 		// We build a small tree rooted at current issue
@@ -648,9 +621,9 @@ func (m *Model) updateViewportContent() {
 	if len(item.Comments) > 0 {
 		sb.WriteString(fmt.Sprintf("### Comments (%d)\n", len(item.Comments)))
 		for _, comment := range item.Comments {
-			sb.WriteString(fmt.Sprintf("> **%s** (%s)\n> \n> %s\n\n", 
-				comment.Author, 
-				FormatTimeRel(comment.CreatedAt), 
+			sb.WriteString(fmt.Sprintf("> **%s** (%s)\n> \n> %s\n\n",
+				comment.Author,
+				FormatTimeRel(comment.CreatedAt),
 				strings.ReplaceAll(comment.Text, "\n", "\n> ")))
 		}
 	}
@@ -665,12 +638,18 @@ func (m *Model) updateViewportContent() {
 
 func GetTypeIconMD(t string) string {
 	switch t {
-	case "bug": return "🐛"
-	case "feature": return "✨"
-	case "task": return "📋"
-	case "epic": return "🏔️"
-	case "chore": return "🧹"
-	default: return "•"
+	case "bug":
+		return "🐛"
+	case "feature":
+		return "✨"
+	case "task":
+		return "📋"
+	case "epic":
+		return "🏔️"
+	case "chore":
+		return "🧹"
+	default:
+		return "•"
 	}
 }
 

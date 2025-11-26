@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	
+
 	"beads_viewer/pkg/model"
 )
 
@@ -35,14 +35,14 @@ func BuildDependencyTree(rootID string, issueMap map[string]*model.Issue) *Depen
 	if !exists {
 		return nil
 	}
-	
+
 	node := &DependencyNode{
 		ID:     root.ID,
 		Title:  root.Title,
 		Status: string(root.Status),
 		Type:   "root",
 	}
-	
+
 	// This is a simplified tree builder - ideally it would be recursive but handled carefully to avoid cycles
 	// For now, we just show direct dependencies + blockers
 	for _, dep := range root.Dependencies {
@@ -53,7 +53,7 @@ func BuildDependencyTree(rootID string, issueMap map[string]*model.Issue) *Depen
 			title = childIssue.Title
 			status = string(childIssue.Status)
 		}
-		
+
 		child := &DependencyNode{
 			ID:     dep.DependsOnID,
 			Title:  title,
@@ -62,7 +62,7 @@ func BuildDependencyTree(rootID string, issueMap map[string]*model.Issue) *Depen
 		}
 		node.Children = append(node.Children, child)
 	}
-	
+
 	return node
 }
 
@@ -70,13 +70,13 @@ func RenderDependencyTree(node *DependencyNode) string {
 	if node == nil {
 		return "No dependency data."
 	}
-	
+
 	var sb strings.Builder
 	sb.WriteString("Dependency Graph:\n")
-	
+
 	// Root
 	sb.WriteString(fmt.Sprintf("%s %s (%s)\n", GetStatusIcon(node.Status), node.ID, node.Title))
-	
+
 	for _, child := range node.Children {
 		icon := "🔗"
 		if child.Type == "blocks" {
@@ -84,16 +84,21 @@ func RenderDependencyTree(node *DependencyNode) string {
 		}
 		sb.WriteString(fmt.Sprintf("  └─ %s %s %s (%s) [%s]\n", icon, child.Type, child.ID, child.Title, child.Status))
 	}
-	
+
 	return sb.String()
 }
 
 func GetStatusIcon(s string) string {
 	switch s {
-	case "open": return "🟢"
-	case "in_progress": return "🔵"
-	case "blocked": return "🔴"
-	case "closed": return "⚫"
-	default: return "⚪"
+	case "open":
+		return "🟢"
+	case "in_progress":
+		return "🔵"
+	case "blocked":
+		return "🔴"
+	case "closed":
+		return "⚫"
+	default:
+		return "⚪"
 	}
 }

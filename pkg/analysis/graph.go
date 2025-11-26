@@ -1,8 +1,11 @@
 package analysis
 
 import (
+	"math"
+
 	"beads_viewer/pkg/model"
-	
+
+	"gonum.org/v1/gonum/graph"
 	"gonum.org/v1/gonum/graph/network"
 	"gonum.org/v1/gonum/graph/simple"
 	"gonum.org/v1/gonum/graph/topo"
@@ -12,8 +15,11 @@ import (
 type GraphStats struct {
 	PageRank          map[string]float64
 	Betweenness       map[string]float64
-	OutDegree         map[string]int // Number of issues blocked by this issue
-	InDegree          map[string]int // Number of dependencies this issue has
+	Eigenvector       map[string]float64
+	Hubs              map[string]float64
+	Authorities       map[string]float64
+	OutDegree         map[string]int     // Number of issues blocked by this issue
+	InDegree          map[string]int     // Number of dependencies this issue has
 	CriticalPathScore map[string]float64 // Heuristic for critical path
 	Cycles            [][]string
 	Density           float64
@@ -22,10 +28,10 @@ type GraphStats struct {
 
 // Analyzer encapsulates the graph logic
 type Analyzer struct {
-	g          *simple.DirectedGraph
-	idToNode   map[string]int64
-	nodeToID   map[int64]string
-	issueMap   map[string]model.Issue
+	g        *simple.DirectedGraph
+	idToNode map[string]int64
+	nodeToID map[int64]string
+	issueMap map[string]model.Issue
 }
 
 func NewAnalyzer(issues []model.Issue) *Analyzer {
@@ -57,11 +63,13 @@ func NewAnalyzer(issues []model.Issue) *Analyzer {
 	// Let's use: Edge A -> B means A DEPENDS ON B.
 	// Then High In-Degree = Many things depend on me (I am a blocker).
 	// High Out-Degree = I depend on many things (I am blocked).
-	
+
 	for _, issue := range issues {
 		u, ok := idToNode[issue.ID]
-		if !ok { continue } // Should not happen
-		
+		if !ok {
+			continue
+		} // Should not happen
+
 		for _, dep := range issue.Dependencies {
 			v, exists := idToNode[dep.DependsOnID]
 			if exists {
@@ -85,13 +93,16 @@ func (a *Analyzer) Analyze() GraphStats {
 	stats := GraphStats{
 		PageRank:          make(map[string]float64),
 		Betweenness:       make(map[string]float64),
+		Eigenvector:       make(map[string]float64),
+		Hubs:              make(map[string]float64),
+		Authorities:       make(map[string]float64),
 		OutDegree:         make(map[string]int),
 		InDegree:          make(map[string]int),
 		CriticalPathScore: make(map[string]float64),
 	}
 
 	nodes := a.g.Nodes()
-	
+
 	// 1. Basic Degree Centrality
 	// In our graph A->B (A depends on B):
 	// In-Degree: Nodes pointing TO me. (Who depends on me?) -> Wait, edges are A->B.
@@ -102,10 +113,10 @@ func (a *Analyzer) Analyze() GraphStats {
 	for nodes.Next() {
 		n := nodes.Node()
 		id := a.nodeToID[n.ID()]
-		
+
 		to := a.g.To(n.ID())
 		stats.InDegree[id] = to.Len() // Issues depending on me
-		
+
 		from := a.g.From(n.ID())
 		stats.OutDegree[id] = from.Len() // Issues I depend on
 	}
@@ -124,6 +135,18 @@ func (a *Analyzer) Analyze() GraphStats {
 	bw := network.Betweenness(a.g)
 	for id, score := range bw {
 		stats.Betweenness[a.nodeToID[id]] = score
+	}
+
+	// 3b. Eigenvector Centrality (influence via influential neighbors)
+	for id, score := range computeEigenvector(a.g) {
+		stats.Eigenvector[a.nodeToID[id]] = score
+	}
+
+	// 3c. HITS (hubs/authorities) captures dependency vs depended-on roles
+	hubAuth := network.HITS(a.g, 1e-8)
+	for id, ha := range hubAuth {
+		stats.Hubs[a.nodeToID[id]] = ha.Hub
+		stats.Authorities[a.nodeToID[id]] = ha.Authority
 	}
 
 	// 4. Cycles
@@ -149,7 +172,7 @@ func (a *Analyzer) Analyze() GraphStats {
 		// In A->B graph, A appears before B.
 		// So `sorted` list is "Start with Dependent -> End with Root Prereq".
 		// Reverse it for "Start with Prereq -> End with Final Product".
-		for i := len(sorted)-1; i >= 0; i-- {
+		for i := len(sorted) - 1; i >= 0; i-- {
 			stats.TopologicalOrder = append(stats.TopologicalOrder, a.nodeToID[sorted[i].ID()])
 		}
 	}
@@ -177,20 +200,20 @@ func (a *Analyzer) Analyze() GraphStats {
 func (a *Analyzer) computeHeights() map[string]float64 {
 	heights := make(map[int64]float64)
 	sorted, _ := topo.Sort(a.g)
-	
+
 	impactScores := make(map[string]float64)
-	
+
 	// Iterate forward: u depends on v (u -> v)
 	// u comes before v in topological sort.
 	// We want to calculate "Impact Depth": How many layers above depend on me?
 	// This equates to "Depth from Root" where Root is the top-level dependent task.
 	// Roots (InDegree 0) have Impact 1.
 	// If u -> v, v's impact = 1 + Impact(u).
-	
+
 	for _, n := range sorted {
 		nid := n.ID()
 		maxParentHeight := 0.0
-		
+
 		// To(n) gives nodes p such that p -> n.
 		// p depends on n. p is a parent/dependent.
 		// Since p comes before n in sort, p is already processed.
@@ -206,6 +229,65 @@ func (a *Analyzer) computeHeights() map[string]float64 {
 		heights[nid] = 1.0 + maxParentHeight
 		impactScores[a.nodeToID[nid]] = heights[nid]
 	}
-	
+
 	return impactScores
+}
+
+// computeEigenvector runs a simple power-iteration to estimate eigenvector centrality.
+// Uses incoming edges so nodes that are depended on by many important nodes score higher.
+// It is deliberately lightweight to keep startup fast.
+func computeEigenvector(g graph.Directed) map[int64]float64 {
+	nodes := g.Nodes()
+	var nodeList []graph.Node
+	for nodes.Next() {
+		nodeList = append(nodeList, nodes.Node())
+	}
+	n := len(nodeList)
+	if n == 0 {
+		return nil
+	}
+
+	vec := make([]float64, n)
+	for i := range vec {
+		vec[i] = 1.0 / float64(n)
+	}
+	work := make([]float64, n)
+
+	index := make(map[int64]int, n)
+	for i, node := range nodeList {
+		index[node.ID()] = i
+	}
+
+	const iterations = 50
+	for iter := 0; iter < iterations; iter++ {
+		for i := range work {
+			work[i] = 0
+		}
+		for _, node := range nodeList {
+			i := index[node.ID()]
+			incoming := g.To(node.ID())
+			for incoming.Next() {
+				j := index[incoming.Node().ID()]
+				work[i] += vec[j]
+			}
+		}
+		// normalize
+		sum := 0.0
+		for _, v := range work {
+			sum += v * v
+		}
+		if sum == 0 {
+			break
+		}
+		norm := 1 / math.Sqrt(sum)
+		for i := range work {
+			vec[i] = work[i] * norm
+		}
+	}
+
+	res := make(map[int64]float64, n)
+	for i, node := range nodeList {
+		res[node.ID()] = vec[i]
+	}
+	return res
 }

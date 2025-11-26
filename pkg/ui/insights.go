@@ -35,19 +35,25 @@ func (i InsightsModel) View() string {
 	// Layout:
 	// [ Top Bottlenecks ] [ Top Keystones ]
 	// [     Cycles      ] [    Stats      ]
-	
-	halfWidth := (i.width / 2) - 4
-	halfHeight := (i.height / 2) - 2
-	
+
+	colWidth := (i.width / 3) - 3
+	if colWidth < 20 {
+		colWidth = 20
+	}
+	rowHeight := (i.height / 2) - 2
+	if rowHeight < 6 {
+		rowHeight = 6
+	}
+
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(ColorSecondary).
 		Padding(0, 1).
-		Width(halfWidth).
-		Height(halfHeight)
-		
+		Width(colWidth).
+		Height(rowHeight)
+
 	titleStyle := lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
-	
+
 	// Bottlenecks
 	var bnSb strings.Builder
 	bnSb.WriteString(titleStyle.Render("🚧 Top Bottlenecks (Betweenness)"))
@@ -56,7 +62,7 @@ func (i InsightsModel) View() string {
 		bnSb.WriteString(fmt.Sprintf("• %s\n", id))
 	}
 	bnBox := boxStyle.Render(bnSb.String())
-	
+
 	// Keystones
 	var ksSb strings.Builder
 	ksSb.WriteString(titleStyle.Render("🏛️  Keystones (High Impact)"))
@@ -65,7 +71,37 @@ func (i InsightsModel) View() string {
 		ksSb.WriteString(fmt.Sprintf("• %s\n", id))
 	}
 	ksBox := boxStyle.Render(ksSb.String())
-	
+
+	// Influencers (Eigenvector)
+	var infSb strings.Builder
+	infSb.WriteString(titleStyle.Render("🌐 Influencers (Eigenvector)"))
+	infSb.WriteString("\n\n")
+	for _, id := range i.insights.Influencers {
+		infSb.WriteString(fmt.Sprintf("• %s\n", id))
+	}
+	infBox := boxStyle.Render(infSb.String())
+
+	// Hubs & Authorities
+	var haSb strings.Builder
+	haSb.WriteString(titleStyle.Render("🛰️  Flow Roles (Hubs / Authorities)"))
+	haSb.WriteString("\n\n")
+	maxLen := len(i.insights.Hubs)
+	if len(i.insights.Authorities) > maxLen {
+		maxLen = len(i.insights.Authorities)
+	}
+	for idx := 0; idx < maxLen; idx++ {
+		hub := ""
+		auth := ""
+		if idx < len(i.insights.Hubs) {
+			hub = i.insights.Hubs[idx]
+		}
+		if idx < len(i.insights.Authorities) {
+			auth = i.insights.Authorities[idx]
+		}
+		haSb.WriteString(fmt.Sprintf("• H: %-12s  A: %s\n", hub, auth))
+	}
+	haBox := boxStyle.Render(haSb.String())
+
 	// Cycles
 	var cySb strings.Builder
 	cySb.WriteString(titleStyle.Render("🔄 Structural Risks (Cycles)"))
@@ -78,16 +114,17 @@ func (i InsightsModel) View() string {
 		}
 	}
 	cyBox := boxStyle.Render(cySb.String())
-	
+
 	// Stats
 	var stSb strings.Builder
 	stSb.WriteString(titleStyle.Render("📊 Network Health"))
 	stSb.WriteString("\n\n")
 	stSb.WriteString(fmt.Sprintf("Density: %.4f\n", i.insights.ClusterDensity))
 	stBox := boxStyle.Render(stSb.String())
-	
-topRow := lipgloss.JoinHorizontal(lipgloss.Top, bnBox, ksBox)
-btmRow := lipgloss.JoinHorizontal(lipgloss.Top, cyBox, stBox)
-	
+
+	// Layout: 3 columns top, 2 columns bottom
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top, bnBox, ksBox, infBox)
+	btmRow := lipgloss.JoinHorizontal(lipgloss.Top, haBox, cyBox, stBox)
+
 	return lipgloss.JoinVertical(lipgloss.Left, topRow, btmRow)
 }

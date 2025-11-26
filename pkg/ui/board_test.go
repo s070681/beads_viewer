@@ -18,26 +18,26 @@ func TestBoardModelBlackbox(t *testing.T) {
 	issues := []model.Issue{
 		{ID: "1", Status: model.StatusOpen, Priority: 1, CreatedAt: createTime(0)},
 	}
-	
+
 	b := ui.NewBoardModel(issues)
-	
+
 	// Focus Open col (0)
 	sel := b.SelectedIssue()
 	if sel == nil || sel.ID != "1" {
 		t.Errorf("Expected ID 1 selected in Open col")
 	}
-	
+
 	// Update issues
 	newIssues := []model.Issue{
 		{ID: "2", Status: model.StatusOpen, Priority: 1, CreatedAt: createTime(0)},
 	}
 	b.SetIssues(newIssues)
-	
+
 	sel = b.SelectedIssue()
 	if sel == nil || sel.ID != "2" {
 		t.Errorf("Expected ID 2 selected after update, got %v", sel)
 	}
-	
+
 	// Filter to empty
 	b.SetIssues([]model.Issue{})
 	sel = b.SelectedIssue()

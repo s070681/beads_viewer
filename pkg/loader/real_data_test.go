@@ -1,8 +1,8 @@
 package loader_test
 
 import (
-	"testing"
 	"path/filepath"
+	"testing"
 
 	"beads_viewer/pkg/loader"
 )
@@ -10,7 +10,7 @@ import (
 func TestLoadRealIssuesBenchmark(t *testing.T) {
 	// Look for files in tests/testdata/real
 	files, _ := filepath.Glob("../../tests/testdata/real/*.jsonl")
-	
+
 	if len(files) == 0 {
 		t.Skip("No real test data found in tests/testdata/real/")
 	}
@@ -25,7 +25,7 @@ func TestLoadRealIssuesBenchmark(t *testing.T) {
 				t.Fatalf("Expected issues in %s, got 0", f)
 			}
 			t.Logf("Loaded %d issues from %s", len(issues), f)
-			
+
 			// Validate content of random issue
 			first := issues[0]
 			if first.ID == "" {
@@ -36,7 +36,7 @@ func TestLoadRealIssuesBenchmark(t *testing.T) {
 }
 
 func BenchmarkLoadLargeFile(b *testing.B) {
-	// Setup a large synthetic file if real ones aren't huge enough, 
+	// Setup a large synthetic file if real ones aren't huge enough,
 	// but for now we assume the real ones exist for the purpose of this specific request
 	files, _ := filepath.Glob("../../tests/testdata/real/*.jsonl")
 	if len(files) == 0 {

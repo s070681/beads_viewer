@@ -20,20 +20,24 @@ func GenerateMarkdown(issues []model.Issue, title string) (string, error) {
 
 	// Table of Contents / Summary
 	sb.WriteString("## Summary\n\n")
-	
+
 	open := 0
 	blocked := 0
 	closed := 0
-	
+
 	for _, i := range issues {
 		switch i.Status {
-		case model.StatusOpen: open++
-		case model.StatusInProgress: open++
-		case model.StatusBlocked: blocked++
-		case model.StatusClosed: closed++
+		case model.StatusOpen:
+			open++
+		case model.StatusInProgress:
+			open++
+		case model.StatusBlocked:
+			blocked++
+		case model.StatusClosed:
+			closed++
 		}
 	}
-		sb.WriteString(fmt.Sprintf("- **Total**: %d\n", len(issues)))
+	sb.WriteString(fmt.Sprintf("- **Total**: %d\n", len(issues)))
 	sb.WriteString(fmt.Sprintf("- **Open**: %d\n", open))
 	sb.WriteString(fmt.Sprintf("- **Blocked**: %d\n", blocked))
 	sb.WriteString(fmt.Sprintf("- **Closed**: %d\n\n", closed))
@@ -54,7 +58,7 @@ func GenerateMarkdown(issues []model.Issue, title string) (string, error) {
 		// Use styling based on status?
 		// classDef open fill:#50FA7B,stroke:#333,stroke-width:2px;
 		// Not strictly necessary but cool. Let's keep it simple first.
-		
+
 		// Sanitize title for mermaid
 		safeTitle := strings.ReplaceAll(i.Title, "\"", "'")
 		safeTitle = strings.ReplaceAll(safeTitle, "[]", "")
@@ -63,7 +67,7 @@ func GenerateMarkdown(issues []model.Issue, title string) (string, error) {
 		if len(safeTitle) > 30 {
 			safeTitle = safeTitle[:27] + "..."
 		}
-		
+
 		// Define node
 		sb.WriteString(fmt.Sprintf("    %s[\"%s <br/> %s\"]\n", i.ID, i.ID, safeTitle))
 
@@ -83,17 +87,17 @@ func GenerateMarkdown(issues []model.Issue, title string) (string, error) {
 		sb.WriteString("    NoDependencies[No Dependencies]\n")
 	}
 	sb.WriteString("```\n\n")
-	
+
 	sb.WriteString("---\n\n")
 
 	// Issues
 	for _, i := range issues {
 		sb.WriteString(fmt.Sprintf("## %s %s\n\n", i.ID, i.Title))
-		
+
 		// Metadata Table
 		sb.WriteString("| Type | Priority | Status | Assignee | Created |\n")
 		sb.WriteString("|---|---|---|---|---|\n")
-		sb.WriteString(fmt.Sprintf("| %s | %d | %s | %s | %s |\n\n", 
+		sb.WriteString(fmt.Sprintf("| %s | %d | %s | %s | %s |\n\n",
 			i.IssueType, i.Priority, i.Status, i.Assignee, i.CreatedAt.Format("2006-01-02")))
 
 		if i.Description != "" {
@@ -105,7 +109,7 @@ func GenerateMarkdown(issues []model.Issue, title string) (string, error) {
 			sb.WriteString("### Acceptance Criteria\n\n")
 			sb.WriteString(i.AcceptanceCriteria + "\n\n")
 		}
-		
+
 		if len(i.Dependencies) > 0 {
 			sb.WriteString("### Dependencies\n\n")
 			for _, dep := range i.Dependencies {
@@ -120,7 +124,7 @@ func GenerateMarkdown(issues []model.Issue, title string) (string, error) {
 				sb.WriteString(fmt.Sprintf("> **%s** (%s):\n> %s\n\n", c.Author, c.CreatedAt.Format("2006-01-02"), strings.ReplaceAll(c.Text, "\n", "\n> ")))
 			}
 		}
-		
+
 		sb.WriteString("---\n\n")
 	}
 

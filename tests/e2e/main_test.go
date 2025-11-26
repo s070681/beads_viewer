@@ -11,7 +11,7 @@ func TestEndToEndBuildAndRun(t *testing.T) {
 	// 1. Build the binary
 	tempDir := t.TempDir()
 	binPath := filepath.Join(tempDir, "bv")
-	
+
 	// Go up to root
 	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/bv/main.go")
 	cmd.Dir = "../../" // Run from project root

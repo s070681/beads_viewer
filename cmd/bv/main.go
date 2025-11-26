@@ -8,13 +8,14 @@ import (
 	"beads_viewer/pkg/export"
 	"beads_viewer/pkg/loader"
 	"beads_viewer/pkg/ui"
+	"beads_viewer/pkg/version"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 func main() {
 	help := flag.Bool("help", false, "Show help")
-	version := flag.Bool("version", false, "Show version")
+	versionFlag := flag.Bool("version", false, "Show version")
 	exportFile := flag.String("export-md", "", "Export issues to a Markdown file (e.g., report.md)")
 	flag.Parse()
 
@@ -25,8 +26,8 @@ func main() {
 		os.Exit(0)
 	}
 
-	if *version {
-		fmt.Println("bv version 0.1.0")
+	if *versionFlag {
+		fmt.Printf("bv %s\n", version.Version)
 		os.Exit(0)
 	}
 

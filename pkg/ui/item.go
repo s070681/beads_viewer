@@ -3,7 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
-	
+
 	"beads_viewer/pkg/model"
 )
 
@@ -32,16 +32,16 @@ func (i IssueItem) FilterValue() string {
 	sb.WriteString(string(i.Issue.Status))
 	sb.WriteString(" ")
 	sb.WriteString(string(i.Issue.IssueType))
-	
+
 	if i.Issue.Assignee != "" {
 		sb.WriteString(" ")
 		sb.WriteString(i.Issue.Assignee)
 	}
-	
+
 	if len(i.Issue.Labels) > 0 {
 		sb.WriteString(" ")
 		sb.WriteString(strings.Join(i.Issue.Labels, " "))
 	}
-	
+
 	return sb.String()
 }

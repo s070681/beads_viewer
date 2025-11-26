@@ -22,7 +22,7 @@ func TestImpactScore(t *testing.T) {
 	// If C breaks, B breaks, A breaks.
 	// So C has highest impact (3).
 	// A has lowest impact (1).
-	
+
 	// Let's verify my implementation.
 	// Forward iteration of Topo Sort.
 	// A->B->C.
@@ -32,16 +32,16 @@ func TestImpactScore(t *testing.T) {
 	// B: To(B)? A. Impact = 1 + 1 = 2.
 	// C: To(C)? B. Impact = 1 + 2 = 3.
 	// Correct. C has score 3.
-	
+
 	issues := []model.Issue{
 		{ID: "A", Dependencies: []*model.Dependency{{DependsOnID: "B"}}},
 		{ID: "B", Dependencies: []*model.Dependency{{DependsOnID: "C"}}},
 		{ID: "C"},
 	}
-	
+
 	an := analysis.NewAnalyzer(issues)
 	stats := an.Analyze()
-	
+
 	if stats.CriticalPathScore["C"] != 3 {
 		t.Errorf("Expected C to have score 3, got %f", stats.CriticalPathScore["C"])
 	}
