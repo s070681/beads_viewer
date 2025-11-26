@@ -19,14 +19,14 @@ func TestEndToEndBuildAndRun(t *testing.T) {
 		t.Fatalf("Build failed: %v\n%s", err, out)
 	}
 
-	// 2. Prepare a fake environment with .beads/issues.jsonl
+	// 2. Prepare a fake environment with .beads/beads.jsonl (canonical filename)
 	envDir := filepath.Join(tempDir, "env")
 	if err := os.MkdirAll(filepath.Join(envDir, ".beads"), 0755); err != nil {
 		t.Fatal(err)
 	}
 
 	jsonlContent := `{"id": "bd-1", "title": "E2E Test Issue", "status": "open", "priority": 0, "issue_type": "bug"}`
-	if err := os.WriteFile(filepath.Join(envDir, ".beads", "issues.jsonl"), []byte(jsonlContent), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(envDir, ".beads", "beads.jsonl"), []byte(jsonlContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 
