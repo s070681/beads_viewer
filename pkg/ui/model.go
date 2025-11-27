@@ -106,8 +106,8 @@ type Model struct {
 	countClosed  int
 
 	// Priority hints
-	showPriorityHints   bool
-	priorityHints       map[string]*analysis.PriorityRecommendation // issueID -> recommendation
+	showPriorityHints bool
+	priorityHints     map[string]*analysis.PriorityRecommendation // issueID -> recommendation
 
 	// Recipe picker
 	showRecipePicker bool
@@ -129,26 +129,54 @@ type Model struct {
 }
 
 // NewModel creates a new Model from the given issues
-func NewModel(issues []model.Issue) Model {
-	// Build lookup map
-	issueMap := make(map[string]*model.Issue, len(issues))
-
-	// Sort issues: Open first, then by Priority (ascending), then by date (newest first)
-	sort.Slice(issues, func(i, j int) bool {
-		iClosed := issues[i].Status == model.StatusClosed
-		jClosed := issues[j].Status == model.StatusClosed
-		if iClosed != jClosed {
-			return !iClosed // Open issues first
-		}
-		if issues[i].Priority != issues[j].Priority {
-			return issues[i].Priority < issues[j].Priority // Lower priority number = higher priority
-		}
-		return issues[i].CreatedAt.After(issues[j].CreatedAt) // Newer first
-	})
-
+func NewModel(issues []model.Issue, activeRecipe *recipe.Recipe) Model {
 	// Graph Analysis (single pass for performance)
 	analyzer := analysis.NewAnalyzer(issues)
 	graphStats := analyzer.Analyze()
+
+	// Sort issues
+	if activeRecipe != nil && activeRecipe.Sort.Field != "" {
+		r := activeRecipe
+		descending := r.Sort.Direction == "desc"
+
+		sort.Slice(issues, func(i, j int) bool {
+			less := false
+			switch r.Sort.Field {
+			case "priority":
+				less = issues[i].Priority < issues[j].Priority
+			case "created", "created_at":
+				less = issues[i].CreatedAt.Before(issues[j].CreatedAt)
+			case "updated", "updated_at":
+				less = issues[i].UpdatedAt.Before(issues[j].UpdatedAt)
+			case "impact":
+				less = graphStats.CriticalPathScore[issues[i].ID] < graphStats.CriticalPathScore[issues[j].ID]
+			case "pagerank":
+				less = graphStats.PageRank[issues[i].ID] < graphStats.PageRank[issues[j].ID]
+			default:
+				less = issues[i].Priority < issues[j].Priority
+			}
+			if descending {
+				return !less
+			}
+			return less
+		})
+	} else {
+		// Default Sort: Open first, then by Priority (ascending), then by date (newest first)
+		sort.Slice(issues, func(i, j int) bool {
+			iClosed := issues[i].Status == model.StatusClosed
+			jClosed := issues[j].Status == model.StatusClosed
+			if iClosed != jClosed {
+				return !iClosed // Open issues first
+			}
+			if issues[i].Priority != issues[j].Priority {
+				return issues[i].Priority < issues[j].Priority // Lower priority number = higher priority
+			}
+			return issues[i].CreatedAt.After(issues[j].CreatedAt) // Newer first
+		})
+	}
+
+	// Build lookup map
+	issueMap := make(map[string]*model.Issue, len(issues))
 
 	// Build list items with pre-computed graph scores
 	items := make([]list.Item, len(issues))
@@ -263,6 +291,7 @@ func NewModel(issues []model.Issue) Model {
 		showPriorityHints: false, // Off by default, toggle with 'p'
 		recipeLoader:      recipeLoader,
 		recipePicker:      recipePicker,
+		activeRecipe:      activeRecipe,
 	}
 }
 
@@ -574,7 +603,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.list.SetSize(msg.Width, listHeight)
 			m.viewport = viewport.New(msg.Width, bodyHeight-1)
-			
+
 			// Update renderer for full width
 			if r, err := glamour.NewTermRenderer(
 				glamour.WithAutoStyle(),
@@ -584,7 +613,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		m.list.SetDelegate(IssueDelegate{Theme: m.theme})
+		m.list.SetDelegate(IssueDelegate{
+			Theme:             m.theme,
+			ShowPriorityHints: m.showPriorityHints,
+			PriorityHints:     m.priorityHints,
+		})
 
 		m.insightsPanel.SetSize(m.width, bodyHeight)
 		m.updateViewportContent()
@@ -1107,8 +1140,8 @@ func (m Model) renderHelpOverlay() string {
 	shortcuts := []struct{ key, desc string }{
 		{"j / ↓", "Move down"},
 		{"k / ↑", "Move up"},
-		{"g", "Go to first item"},
-		{"G", "Go to last item"},
+		{"home", "Go to first item"},
+		{"G / end", "Go to last item"},
 		{"Ctrl+d", "Page down"},
 		{"Ctrl+u", "Page up"},
 		{"Tab", "Switch focus (split view)"},
@@ -1213,27 +1246,27 @@ func (m Model) renderHelpOverlay() string {
 }
 
 func (m *Model) renderFooter() string {
-	filterStyle := lipgloss.NewStyle().Foreground(ColorText).Bold(true)
-	helpStyle := lipgloss.NewStyle().Foreground(ColorSubtext)
-	countStyle := lipgloss.NewStyle().Foreground(ColorSecondary).Padding(0, 1)
+	// ══════════════════════════════════════════════════════════════════════════
+	// POLISHED FOOTER - Stripe-level status bar with visual hierarchy
+	// ══════════════════════════════════════════════════════════════════════════
 
-	// If there's a status message, show it prominently
+	// If there's a status message, show it prominently with polished styling
 	if m.statusMsg != "" {
 		var msgStyle lipgloss.Style
 		if m.statusIsError {
 			msgStyle = lipgloss.NewStyle().
-				Background(lipgloss.Color("#FF6B6B")).
-				Foreground(lipgloss.Color("#FFFFFF")).
+				Background(ColorPrioCriticalBg).
+				Foreground(ColorPrioCritical).
 				Bold(true).
-				Padding(0, 1)
+				Padding(0, 2)
 		} else {
 			msgStyle = lipgloss.NewStyle().
-				Background(lipgloss.Color("#4ECDC4")).
-				Foreground(lipgloss.Color("#1a1a2e")).
+				Background(ColorStatusOpenBg).
+				Foreground(ColorSuccess).
 				Bold(true).
-				Padding(0, 1)
+				Padding(0, 2)
 		}
-		msgSection := msgStyle.Render(m.statusMsg)
+		msgSection := msgStyle.Render("✓ " + m.statusMsg)
 		remaining := m.width - lipgloss.Width(msgSection)
 		if remaining < 0 {
 			remaining = 0
@@ -1242,90 +1275,164 @@ func (m *Model) renderFooter() string {
 		return lipgloss.JoinHorizontal(lipgloss.Bottom, msgSection, filler)
 	}
 
+	// ─────────────────────────────────────────────────────────────────────────
+	// FILTER BADGE - Current view/filter state
+	// ─────────────────────────────────────────────────────────────────────────
 	var filterTxt string
+	var filterIcon string
 	switch m.currentFilter {
 	case "all":
 		filterTxt = "ALL"
+		filterIcon = "📋"
 	case "open":
 		filterTxt = "OPEN"
+		filterIcon = "📂"
 	case "closed":
 		filterTxt = "CLOSED"
+		filterIcon = "✅"
 	case "ready":
 		filterTxt = "READY"
+		filterIcon = "🚀"
 	default:
-		// Check for recipe filter
 		if strings.HasPrefix(m.currentFilter, "recipe:") {
-			filterTxt = strings.ToUpper(m.currentFilter[7:]) // Strip "recipe:" prefix
+			filterTxt = strings.ToUpper(m.currentFilter[7:])
+			filterIcon = "📑"
 		} else {
 			filterTxt = m.currentFilter
+			filterIcon = "🔍"
 		}
 	}
 
-	status := fmt.Sprintf(" Filter: %s ", filterTxt)
-	count := fmt.Sprintf("%d issues", len(m.list.Items()))
+	filterBadge := lipgloss.NewStyle().
+		Background(ColorPrimary).
+		Foreground(ColorText).
+		Bold(true).
+		Padding(0, 1).
+		Render(fmt.Sprintf("%s %s", filterIcon, filterTxt))
 
-	// Stats block - show diff stats if in time-travel mode
-	var stats string
+	// ─────────────────────────────────────────────────────────────────────────
+	// STATS SECTION - Issue counts with visual indicators
+	// ─────────────────────────────────────────────────────────────────────────
+	var statsSection string
 	if m.timeTravelMode && m.timeTravelDiff != nil {
 		d := m.timeTravelDiff.Summary
-		stats = fmt.Sprintf(" ⏱️ Since %s: +%d ✅%d ~%d ",
-			m.timeTravelSince, d.IssuesAdded, d.IssuesClosed, d.IssuesModified)
+		timeTravelStyle := lipgloss.NewStyle().
+			Background(ColorPrioHighBg).
+			Foreground(ColorWarning).
+			Padding(0, 1)
+		statsSection = timeTravelStyle.Render(fmt.Sprintf("⏱ %s: +%d ✅%d ~%d",
+			m.timeTravelSince, d.IssuesAdded, d.IssuesClosed, d.IssuesModified))
 	} else {
-		stats = fmt.Sprintf(" Open:%d Ready:%d Blocked:%d Closed:%d ", m.countOpen, m.countReady, m.countBlocked, m.countClosed)
+		// Polished stats with mini indicators
+		statsStyle := lipgloss.NewStyle().
+			Background(ColorBgHighlight).
+			Foreground(ColorText).
+			Padding(0, 1)
+
+		openStyle := lipgloss.NewStyle().Foreground(ColorStatusOpen)
+		readyStyle := lipgloss.NewStyle().Foreground(ColorSuccess)
+		blockedStyle := lipgloss.NewStyle().Foreground(ColorWarning)
+		closedStyle := lipgloss.NewStyle().Foreground(ColorMuted)
+
+		statsContent := fmt.Sprintf("%s%d %s%d %s%d %s%d",
+			openStyle.Render("○"),
+			m.countOpen,
+			readyStyle.Render("◉"),
+			m.countReady,
+			blockedStyle.Render("◈"),
+			m.countBlocked,
+			closedStyle.Render("●"),
+			m.countClosed)
+		statsSection = statsStyle.Render(statsContent)
 	}
 
-	// Update block
-	updateTxt := ""
+	// ─────────────────────────────────────────────────────────────────────────
+	// UPDATE BADGE - New version available
+	// ─────────────────────────────────────────────────────────────────────────
+	updateSection := ""
 	if m.updateAvailable {
-		updateTxt = fmt.Sprintf(" ⭐ %s available ", m.updateTag)
+		updateStyle := lipgloss.NewStyle().
+			Background(ColorTypeFeature).
+			Foreground(ColorBg).
+			Bold(true).
+			Padding(0, 1)
+		updateSection = updateStyle.Render(fmt.Sprintf("⭐ %s", m.updateTag))
 	}
 
-	var keys string
+	// ─────────────────────────────────────────────────────────────────────────
+	// KEYBOARD HINTS - Context-aware navigation help
+	// ─────────────────────────────────────────────────────────────────────────
+	keyStyle := lipgloss.NewStyle().
+		Foreground(ColorSecondary).
+		Background(ColorBgSubtle).
+		Padding(0, 0)
+	sepStyle := lipgloss.NewStyle().Foreground(ColorMuted)
+	sep := sepStyle.Render(" │ ")
+
+	var keyHints []string
 	if m.showHelp {
-		keys = "Press any key to close help"
+		keyHints = append(keyHints, "Press any key to close")
 	} else if m.showRecipePicker {
-		keys = "j/k: nav • enter: apply • esc: cancel"
+		keyHints = append(keyHints, keyStyle.Render("j/k")+" nav", keyStyle.Render("⏎")+" apply", keyStyle.Render("esc")+" cancel")
 	} else if m.focused == focusInsights {
-		keys = "h/l: panels • j/k: items • e: explain • x: calc • enter: jump • ?: help"
+		keyHints = append(keyHints, keyStyle.Render("h/l")+" panels", keyStyle.Render("e")+" explain", keyStyle.Render("⏎")+" jump", keyStyle.Render("?")+" help")
 	} else if m.isGraphView {
-		keys = "h/j/k/l: nav • H/L: scroll • enter: view • g: list • ?: help"
+		keyHints = append(keyHints, keyStyle.Render("hjkl")+" nav", keyStyle.Render("H/L")+" scroll", keyStyle.Render("⏎")+" view", keyStyle.Render("g")+" list")
 	} else if m.isBoardView {
-		keys = "h/j/k/l: nav • G: bottom • enter: view • b: list • ?: help"
+		keyHints = append(keyHints, keyStyle.Render("hjkl")+" nav", keyStyle.Render("G")+" bottom", keyStyle.Render("⏎")+" view", keyStyle.Render("b")+" list")
 	} else if m.isActionableView {
-		keys = "j/k: nav • enter: view • a: list • ?: help"
+		keyHints = append(keyHints, keyStyle.Render("j/k")+" nav", keyStyle.Render("⏎")+" view", keyStyle.Render("a")+" list", keyStyle.Render("?")+" help")
 	} else if m.list.FilterState() == list.Filtering {
-		keys = "esc: cancel • enter: select"
+		keyHints = append(keyHints, keyStyle.Render("esc")+" cancel", keyStyle.Render("⏎")+" select")
 	} else {
 		if m.timeTravelMode {
-			keys = "t: exit diff • R: recipe • a: action • b: board • g: graph • i: insights • p: prio • /: search • ?: help"
+			keyHints = append(keyHints, keyStyle.Render("t")+" exit diff", keyStyle.Render("R")+" recipe", keyStyle.Render("abgi")+" views", keyStyle.Render("?")+" help")
 		} else if m.isSplitView {
-			keys = "tab: focus • R: recipe • t: diff • a: action • b: board • g: graph • i: insights • p: prio • ?: help"
+			keyHints = append(keyHints, keyStyle.Render("tab")+" focus", keyStyle.Render("R")+" recipe", keyStyle.Render("abgi")+" views", keyStyle.Render("?")+" help")
+		} else if m.showDetails {
+			keyHints = append(keyHints, keyStyle.Render("esc")+" back", keyStyle.Render("j/k")+" scroll", keyStyle.Render("?")+" help")
 		} else {
-			if m.showDetails {
-				keys = "esc: back • j/k: scroll • ?: help • q: back"
-			} else {
-				keys = "enter: details • R: recipe • t: diff • a: action • b: board • g: graph • i: insights • p: prio • ?: help"
-			}
+			keyHints = append(keyHints, keyStyle.Render("⏎")+" details", keyStyle.Render("R")+" recipe", keyStyle.Render("t")+" diff", keyStyle.Render("abgi")+" views", keyStyle.Render("?")+" help")
 		}
 	}
 
-	statusSection := filterStyle.Background(ColorPrimary).Padding(0, 1).Render(status)
-	updateSection := lipgloss.NewStyle().Background(ColorTypeFeature).Foreground(ColorBg).Bold(true).Render(updateTxt)
-	statsSection := lipgloss.NewStyle().Background(ColorBgHighlight).Foreground(ColorText).Render(stats)
-	countSection := countStyle.Render(count)
-	keysSection := helpStyle.Padding(0, 1).Render(keys)
+	keysSection := lipgloss.NewStyle().
+		Foreground(ColorSubtext).
+		Padding(0, 1).
+		Render(strings.Join(keyHints, sep))
 
-	// Calculate filler width
-	leftWidth := lipgloss.Width(statusSection) + lipgloss.Width(updateSection) + lipgloss.Width(statsSection)
-	rightWidth := lipgloss.Width(countSection) + lipgloss.Width(keysSection)
+	// ─────────────────────────────────────────────────────────────────────────
+	// COUNT BADGE - Total issues displayed
+	// ─────────────────────────────────────────────────────────────────────────
+	countBadge := lipgloss.NewStyle().
+		Foreground(ColorSecondary).
+		Padding(0, 1).
+		Render(fmt.Sprintf("%d issues", len(m.list.Items())))
 
-	remaining := m.width - leftWidth - rightWidth
+	// ─────────────────────────────────────────────────────────────────────────
+	// ASSEMBLE FOOTER with proper spacing
+	// ─────────────────────────────────────────────────────────────────────────
+	leftWidth := lipgloss.Width(filterBadge) + lipgloss.Width(statsSection)
+	if updateSection != "" {
+		leftWidth += lipgloss.Width(updateSection) + 1
+	}
+	rightWidth := lipgloss.Width(countBadge) + lipgloss.Width(keysSection)
+
+	remaining := m.width - leftWidth - rightWidth - 1
 	if remaining < 0 {
 		remaining = 0
 	}
 	filler := lipgloss.NewStyle().Background(ColorBgDark).Width(remaining).Render("")
 
-	return lipgloss.JoinHorizontal(lipgloss.Bottom, statusSection, updateSection, statsSection, filler, countSection, keysSection)
+	// Build the footer
+	var parts []string
+	parts = append(parts, filterBadge)
+	if updateSection != "" {
+		parts = append(parts, updateSection)
+	}
+	parts = append(parts, statsSection, filler, countBadge, keysSection)
+
+	return lipgloss.JoinHorizontal(lipgloss.Bottom, parts...)
 }
 
 // getDiffStatus returns the diff status for an issue if time-travel mode is active
@@ -1489,9 +1596,9 @@ func (m *Model) applyRecipe(r *recipe.Recipe) {
 			case "updated", "updated_at":
 				less = iItem.Issue.UpdatedAt.Before(jItem.Issue.UpdatedAt)
 			case "impact":
-				less = iItem.Impact > jItem.Impact
+				less = iItem.Impact < jItem.Impact
 			case "pagerank":
-				less = iItem.GraphScore > jItem.GraphScore
+				less = iItem.GraphScore < jItem.GraphScore
 			default:
 				less = iItem.Issue.Priority < jItem.Issue.Priority
 			}
@@ -1512,6 +1619,12 @@ func (m *Model) applyRecipe(r *recipe.Recipe) {
 				less = filteredIssues[i].CreatedAt.Before(filteredIssues[j].CreatedAt)
 			case "updated", "updated_at":
 				less = filteredIssues[i].UpdatedAt.Before(filteredIssues[j].UpdatedAt)
+			case "impact":
+				// Use analysis map for sort
+				less = m.analysis.CriticalPathScore[filteredIssues[i].ID] < m.analysis.CriticalPathScore[filteredIssues[j].ID]
+			case "pagerank":
+				// Use analysis map for sort
+				less = m.analysis.PageRank[filteredIssues[i].ID] < m.analysis.PageRank[filteredIssues[j].ID]
 			default:
 				less = filteredIssues[i].Priority < filteredIssues[j].Priority
 			}

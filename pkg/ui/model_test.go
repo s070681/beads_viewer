@@ -25,7 +25,7 @@ func TestModelFiltering(t *testing.T) {
 		},
 	}
 
-	m := ui.NewModel(issues)
+	m := ui.NewModel(issues, nil)
 
 	// Test "All"
 	if len(m.FilteredIssues()) != 5 {
