@@ -196,6 +196,9 @@ func (g *GraphModel) PageUp() {
 }
 
 func (g *GraphModel) PageDown() {
+	if len(g.sortedIDs) == 0 {
+		return
+	}
 	g.selectedIdx += 10
 	if g.selectedIdx >= len(g.sortedIDs) {
 		g.selectedIdx = len(g.sortedIDs) - 1
@@ -260,9 +263,13 @@ func (g *GraphModel) View(width, height int) string {
 	graphView := g.renderVisualGraph(selectedID, selectedIssue, detailWidth, height-2, t)
 
 	// Combine with separator
+	sepHeight := height - 2
+	if sepHeight < 1 {
+		sepHeight = 1
+	}
 	separator := t.Renderer.NewStyle().
 		Foreground(t.Secondary).
-		Render(strings.Repeat("│\n", height-2))
+		Render(strings.Repeat("│\n", sepHeight))
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, listView, separator, graphView)
 }
@@ -533,6 +540,13 @@ func (g *GraphModel) renderEgoNode(id string, issue *model.Issue, width int, t T
 	if egoWidth < 30 {
 		egoWidth = 30
 	}
+	// Don't exceed available width
+	if egoWidth > width-4 {
+		egoWidth = width - 4
+	}
+	if egoWidth < 10 {
+		egoWidth = 10
+	}
 
 	icons := fmt.Sprintf("%s %s %s", statusIcon, prioIcon, typeIcon)
 	displayID := smartTruncateID(id, egoWidth-4)
@@ -581,13 +595,21 @@ func (g *GraphModel) renderConnectorDown(count int, width int, t Theme) string {
 		return connStyle.Render("│\n│\n▼")
 	}
 
-	// Multiple connections - fan pattern
+	// Multiple connections - fan pattern using proper rune slicing
+	// Pattern chars: ├ ─ ┼ ─ ┼ ─ ┤ (for 3 connections)
 	lines := []string{"│"}
-	if count <= 3 {
-		lines = append(lines, "├─┼─┤"[:count*2+1])
-	} else {
-		lines = append(lines, "├─┼─┼─┼─┤"[:min(count*2+1, 9)])
+
+	// Build the connector pattern properly
+	var pattern strings.Builder
+	pattern.WriteRune('├')
+	for i := 0; i < count && i < 4; i++ {
+		if i > 0 {
+			pattern.WriteRune('┼')
+		}
+		pattern.WriteRune('─')
 	}
+	pattern.WriteRune('┤')
+	lines = append(lines, pattern.String())
 	lines = append(lines, "▼")
 
 	return connStyle.Render(strings.Join(lines, "\n"))
@@ -788,42 +810,54 @@ func getTypeIcon(itype model.IssueType) string {
 }
 
 func smartTruncateID(id string, maxLen int) string {
-	if len(id) <= maxLen {
+	if maxLen <= 0 {
+		return ""
+	}
+
+	runes := []rune(id)
+	if len(runes) <= maxLen {
 		return id
 	}
 
 	parts := strings.Split(id, "_")
 	if len(parts) > 2 {
 		var abbrev strings.Builder
+		runeCount := 0
 		for i, part := range parts {
+			partRunes := []rune(part)
 			if i == len(parts)-1 {
-				remaining := maxLen - abbrev.Len()
+				// Last part: keep as much as possible
+				remaining := maxLen - runeCount
 				if remaining > 0 {
-					if len(part) <= remaining {
+					if len(partRunes) <= remaining {
 						abbrev.WriteString(part)
+					} else if remaining > 1 {
+						abbrev.WriteString(string(partRunes[:remaining-1]))
+						abbrev.WriteRune('…')
 					} else {
-						abbrev.WriteString(part[:remaining-1])
 						abbrev.WriteRune('…')
 					}
 				}
 			} else {
-				if len(part) > 0 {
-					abbrev.WriteRune(rune(part[0]))
+				// Non-last parts: just first char + underscore
+				if len(partRunes) > 0 {
+					abbrev.WriteRune(partRunes[0])
 					abbrev.WriteRune('_')
+					runeCount += 2
 				}
 			}
 		}
 		result := abbrev.String()
-		if len(result) <= maxLen {
+		if len([]rune(result)) <= maxLen {
 			return result
 		}
 	}
 
-	runes := []rune(id)
-	if len(runes) > maxLen-1 {
+	// Fallback: simple truncation
+	if maxLen > 1 {
 		return string(runes[:maxLen-1]) + "…"
 	}
-	return id
+	return string(runes[:maxLen])
 }
 
 func min(a, b int) int {
