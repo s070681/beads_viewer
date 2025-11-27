@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -47,6 +48,8 @@ func setupTestGitRepo(t *testing.T) (string, func()) {
 	// Commit initial state
 	runGit(t, tmpDir, "add", ".")
 	runGit(t, tmpDir, "commit", "-m", "Initial commit")
+	// Ensure subsequent commits have a distinct timestamp for deterministic date-based resolution
+	time.Sleep(1500 * time.Millisecond)
 
 	// Add a third issue in second commit
 	updatedContent := `{"id":"ISSUE-1","title":"First issue","status":"open","priority":1}
@@ -71,6 +74,17 @@ func runGit(t *testing.T, dir string, args ...string) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v failed: %v\nOutput: %s", args, err, out)
 	}
+}
+
+func runGitOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\nOutput: %s", args, err, out)
+	}
+	return string(out)
 }
 
 func TestNewGitLoader(t *testing.T) {
@@ -134,6 +148,42 @@ func TestGitLoader_ResolveRevision(t *testing.T) {
 	}
 	if len(sha) != 40 {
 		t.Errorf("expected 40-char SHA, got %d chars: %s", len(sha), sha)
+	}
+}
+
+func TestGitLoader_ResolveRevision_DateString(t *testing.T) {
+	repoDir, cleanup := setupTestGitRepo(t)
+	defer cleanup()
+
+	loader := NewGitLoader(repoDir)
+
+	// Get author date of the first commit (HEAD~1) and ensure date resolution returns that SHA
+	dateStr := runGitOutput(t, repoDir, "log", "--format=%aI", "-n1", "HEAD~1")
+	dateStr = strings.TrimSpace(dateStr)
+	if dateStr == "" {
+		t.Fatalf("expected non-empty author date")
+	}
+
+	expectedSHA := strings.TrimSpace(runGitOutput(t, repoDir, "rev-parse", "HEAD~1"))
+
+	sha, err := loader.ResolveRevision(dateStr)
+	if err != nil {
+		t.Fatalf("ResolveRevision(date) failed: %v", err)
+	}
+
+	if sha != expectedSHA {
+		t.Fatalf("expected SHA %s for date %s, got %s", expectedSHA, dateStr, sha)
+	}
+}
+
+func TestParseDateStringUsesLocalForDateOnly(t *testing.T) {
+	dateStr := "2025-01-02"
+	tm, ok := parseDateString(dateStr)
+	if !ok {
+		t.Fatalf("expected parseDateString to parse date-only string")
+	}
+	if tm.Location() != time.Local {
+		t.Fatalf("expected location to be time.Local, got %v", tm.Location())
 	}
 }
 

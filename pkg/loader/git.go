@@ -133,6 +133,10 @@ func (g *GitLoader) ListRevisions(limit int) ([]RevisionInfo, error) {
 		})
 	}
 
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("parsing git log output: %w", err)
+	}
+
 	return revisions, nil
 }
 
@@ -149,11 +153,49 @@ func (g *GitLoader) resolveRevision(revision string) (string, error) {
 	cmd.Dir = g.repoPath
 
 	out, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("git rev-parse failed: %w", err)
+	if err == nil {
+		return strings.TrimSpace(string(out)), nil
 	}
 
-	return strings.TrimSpace(string(out)), nil
+	// If rev-parse failed, try to interpret the revision as a date.
+	if t, ok := parseDateString(revision); ok {
+		dateSpec := fmt.Sprintf("HEAD@{%s}", t.Format("2006-01-02 15:04:05"))
+		cmd = exec.Command("git", "rev-parse", dateSpec)
+		cmd.Dir = g.repoPath
+		if out, dateErr := cmd.Output(); dateErr == nil {
+			return strings.TrimSpace(string(out)), nil
+		}
+	}
+
+	return "", fmt.Errorf("git rev-parse failed: %w", err)
+}
+
+// parseDateString attempts to parse common date/time formats used by users.
+// Returns the parsed time and true on success.
+func parseDateString(s string) (time.Time, bool) {
+	layouts := []string{
+		time.RFC3339,
+		"2006-01-02",
+		"2006-01-02 15:04",
+		"2006-01-02 15:04:05",
+	}
+
+	for _, layout := range layouts {
+		switch layout {
+		case time.RFC3339:
+			if t, err := time.Parse(layout, s); err == nil {
+				return t, true
+			}
+		default:
+			// For layouts without zone information, assume local time to match git's
+			// interpretation of HEAD@{<date>} which is evaluated in local time.
+			if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+				return t, true
+			}
+		}
+	}
+
+	return time.Time{}, false
 }
 
 // loadFromGit loads issues from a specific commit SHA
@@ -333,6 +375,10 @@ func (g *GitLoader) GetCommitsBetween(fromRev, toRev string) ([]RevisionInfo, er
 			Timestamp: timestamp,
 			Message:   parts[2],
 		})
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("parsing git log output: %w", err)
 	}
 
 	return revisions, nil
