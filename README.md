@@ -62,6 +62,7 @@ No web page loads, no heavy clients. `bv` starts instantly and lets you fly thro
 *   **Split-View Dashboard:** On wider screens, see your list on the left and full details on the right.
 *   **Markdown Rendering:** Issue descriptions, comments, and notes are beautifully rendered with syntax highlighting, headers, and lists.
 *   **Instant Filtering:** Zero-latency filtering. Press `o` for Open, `c` for Closed, or `r` for Ready (unblocked) tasks.
+*   **Live Reload:** Watches `.beads/beads.jsonl` and refreshes lists, details, and insights automatically when the file changes—no restart needed.
 
 ### 🔎 Rich Context
 Don't just read the title. `bv` gives you the full picture:
@@ -80,6 +81,8 @@ Don't just read the title. `bv` gives you the full picture:
 *   **Copy:** Press `C` to copy the selected issue as formatted Markdown to your clipboard.
 *   **Edit:** Press `O` to open the `.beads/beads.jsonl` file in your preferred GUI editor.
 *   **Time-Travel:** Press `t` to compare against any git revision, or `T` for quick HEAD~5 comparison.
+### 🔌 Automation Hooks
+Configure pre- and post-export hooks in `.bv/hooks.yaml` to run validations, notifications, or uploads. Defaults: pre-export hooks fail fast on errors (`on_error: fail`), post-export hooks log and continue (`on_error: continue`). Empty commands are ignored with a warning for safety. Hook env includes `BV_EXPORT_PATH`, `BV_EXPORT_FORMAT`, `BV_ISSUE_COUNT`, `BV_TIMESTAMP`, plus any custom `env` entries.
 
 ---
 
@@ -293,7 +296,7 @@ sequenceDiagram
 
 ### The "Cognitive Offloading" Strategy
 The primary design goal of the Robot Protocol is **Cognitive Offloading**.
-Large Language Models (LLMs) are probabilistic engines; they are excellent at semantic reasoning (coding, writing) but notoriously unreliable at algorithmic graph traversal (finding cycles, computing shortest paths).
+Large Language Models (LLMs) are probabilistic engines; they are excellent at semantic reasoning (coding, writing) but notoriously unreliable at algorithmic graph traversal (finding cycles, computing shortest paths). The two-phase analyzer returns degree/topo/density immediately and completes PageRank/Betweenness/HITS/Eigenvector/Critical Path/Cycles asynchronously with size-aware timeouts and hashed caching, so repeat robot calls stay fast when the graph hasn’t changed.
 
 If you feed an Agent raw `beads.jsonl` data, you are forcing the Agent to:
 1.  Parse thousands of lines of JSON.
@@ -493,6 +496,7 @@ For the interactive TUI, we built a specialized **ASCII/Unicode Graph Engine** (
 ### 2. The Export Engine (`--export-md`)
 For external reporting, `bv` includes a robust **Mermaid Generator** (`pkg/export/markdown.go`).
 *   **Sanitization:** It automatically escapes unsafe characters in issue titles to prevent syntax errors in the Mermaid parser.
+*   **Collision-Proof IDs:** When sanitization would collide (e.g., symbol-only IDs), nodes get a stable hash suffix so edges never merge or disappear.
 *   **Class-Based Styling:** Nodes are assigned CSS classes (`classDef open`, `classDef blocked`) based on their status, so the resulting diagram visually matches the TUI's color scheme when rendered on GitHub or GitLab.
 *   **Semantic Edges:** Blockers are rendered with thick arrows (`==>`), while loose relations use dashed lines (`-.->`), encoding the *severity* of the link into the visual syntax.
 
@@ -1091,6 +1095,7 @@ repos:
   - name: api
     path: services/api
     prefix: "api-"        # Issues become api-AUTH-123
+    beads_path: .beads    # Optional per-repo override (defaults to .beads)
 
   - name: web
     path: apps/web
@@ -1147,6 +1152,10 @@ The workspace system enables **cross-repo blocking relationships**:
 │ "Auth endpoint" │    │ "Token utils"   │
 └─────────────────┘    └─────────────────┘
 ```
+
+### Filtering Within a Workspace
+
+Use `--repo` to scope the view (and robot outputs) to a specific repository prefix. Matching is case-insensitive and accepts common separators (`-`, `:`, `_`); it also honors the `source_repo` field when present.
 
 ### Supported Monorepo Layouts
 
@@ -1313,7 +1322,8 @@ In complex software projects, tasks are not isolated. They are deeply interconne
 *   **Startup Time:** < 50ms for typical repos (< 1000 issues).
 *   **Rendering:** 60 FPS UI updates using [Bubble Tea](https://github.com/charmbracelet/bubbletea).
 *   **Virtualization:** List views and Markdown renderers are fully windowed. `bv` can handle repositories with **10,000+ issues** without UI lag, consuming minimal RAM.
-*   **Graph Compute:** The analysis engine runs in a separate goroutine, pre-calculating metrics for thousands of nodes in sub-second time on standard hardware.
+*   **Graph Compute:** A two-phase analyzer computes topo/degree/density instantly, then PageRank/Betweenness/HITS/Critical Path/Cycles asynchronously with size-aware timeouts.
+*   **Caching:** Repeated analyses reuse hashed results automatically, avoiding recomputation when the bead graph hasn’t changed.
 
 ### Performance Benchmarking
 
