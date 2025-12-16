@@ -688,6 +688,10 @@
                     <div class="flex items-center space-x-2">
                       <span class="text-xs font-mono text-gray-500 dark:text-gray-400" x-text="issue.id"></span>
                       <span class="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 dark:bg-gray-700" x-text="issue.issue_type"></span>
+                      <span x-show="isOnCriticalPath(issue.id)"
+                            class="px-2 py-0.5 text-xs font-medium rounded bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 animate-pulse">
+                        🔥 Critical Path #<span x-text="getCriticalPathPosition(issue.id)"></span>
+                      </span>
                     </div>
                     <h3 class="font-medium mt-1" x-text="issue.title"></h3>
                     <p x-show="issue.description" class="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2" x-text="issue.description"></p>
@@ -1541,6 +1545,10 @@
                   <div class="flex items-center space-x-2">
                     <kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs font-mono">d</kbd>
                     <span class="text-gray-600 dark:text-gray-400">Diagnostics</span>
+                  </div>
+                  <div class="flex items-center space-x-2">
+                    <kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs font-mono">c</kbd>
+                    <span class="text-gray-600 dark:text-gray-400">Critical path</span>
                   </div>
                   <div class="flex items-center space-x-2">
                     <kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs font-mono">Esc</kbd>
