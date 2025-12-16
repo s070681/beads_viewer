@@ -48,7 +48,7 @@ func DefaultFieldDescriptions() map[string]string {
 		"what_if.cascade":          "Total issues transitively unblocked (including indirect)",
 		"what_if.depth":            "Critical path depth reduction if completed",
 		"what_if.days_saved":       "Estimated days saved based on issue estimates",
-		"what_if.parallel_gain":    "Net change in parallel work capacity (direct_unblocks - 1); positive = more parallel work possible",
+		"what_if.parallelization_gain": "Net change in parallel work capacity (direct_unblocks - 1); positive = more parallel work possible",
 		"status.phase2":            "Whether expensive graph metrics (PageRank, betweenness) are included",
 		"status.capped":            "Whether results were truncated to prevent overload",
 	}
@@ -188,6 +188,7 @@ func (a *Analyzer) GenerateEnhancedRecommendationsWithThresholds(thresholds Reco
 					Confidence:        0.5,
 					Reasoning:         extractReasoningStrings(topReasons),
 					Direction:         "none",
+					WhatIf:            whatIf, // bv-129: populate top-level WhatIf for consistency
 				},
 				Explanation: explanation,
 			})

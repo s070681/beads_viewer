@@ -819,16 +819,25 @@ func TestParallelizationGainNegative(t *testing.T) {
 	an := analysis.NewAnalyzer(issues)
 	recs := an.GenerateRecommendations()
 
-	for _, rec := range recs {
-		if rec.IssueID == "A" && rec.WhatIf != nil {
-			if rec.WhatIf.ParallelizationGain == nil {
-				t.Fatal("ParallelizationGain should not be nil")
-			}
-			expectedGain := -1 // 0 unblocks - 1 completed = -1 net loss
-			if *rec.WhatIf.ParallelizationGain != expectedGain {
-				t.Errorf("Expected ParallelizationGain=%d for standalone issue, got %d", expectedGain, *rec.WhatIf.ParallelizationGain)
-			}
+	var recA *analysis.PriorityRecommendation
+	for i := range recs {
+		if recs[i].IssueID == "A" {
+			recA = &recs[i]
+			break
 		}
+	}
+
+	if recA == nil || recA.WhatIf == nil {
+		t.Fatal("Expected recommendation with WhatIf for A")
+	}
+
+	if recA.WhatIf.ParallelizationGain == nil {
+		t.Fatal("ParallelizationGain should not be nil")
+	}
+
+	expectedGain := -1 // 0 unblocks - 1 completed = -1 net loss
+	if *recA.WhatIf.ParallelizationGain != expectedGain {
+		t.Errorf("Expected ParallelizationGain=%d for standalone issue, got %d", expectedGain, *recA.WhatIf.ParallelizationGain)
 	}
 }
 

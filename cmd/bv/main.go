@@ -860,7 +860,7 @@ func main() {
 				"jq '.recommendations[] | select(.confidence > 0.7)' - Filter high confidence",
 				"jq '.recommendations[0].explanation.what_if' - Get top item's impact",
 				"jq '.recommendations | map({id: .issue_id, score: .impact_score})' - Extract IDs and scores",
-				"jq '.recommendations[] | select(.what_if.parallelization_gain > 0)' - Find items that increase parallel work capacity",
+				"jq '.recommendations[] | select(.explanation.what_if.parallelization_gain > 0)' - Find items that increase parallel work capacity",
 				"--robot-min-confidence 0.6 - Pre-filter by confidence",
 				"--robot-max-results 5 - Limit to top N results",
 				"--robot-by-label bug - Filter by specific label",
