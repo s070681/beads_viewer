@@ -9,7 +9,9 @@ TMP_DIRS=()
 
 cleanup_tmp_dirs() {
     local dir
-    for dir in "${TMP_DIRS[@]}"; do
+    # Use ${array[@]+"${array[@]}"} pattern to avoid unbound variable error
+    # when TMP_DIRS is empty with set -u enabled
+    for dir in ${TMP_DIRS[@]+"${TMP_DIRS[@]}"}; do
         [ -n "$dir" ] && rm -rf "$dir"
     done
 }
