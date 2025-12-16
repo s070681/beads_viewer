@@ -427,44 +427,135 @@
 
       <!-- Issues list view -->
       <div x-show="view === 'issues'">
-        <!-- Filters -->
-        <div class="mb-6 flex flex-wrap gap-3">
-          <select x-model="filters.status" @change="loadIssues()"
-                  class="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
-            <option value="">All Status</option>
-            <option value="open">Open</option>
-            <option value="in_progress">In Progress</option>
-            <option value="blocked">Blocked</option>
-            <option value="closed">Closed</option>
-          </select>
+        <!-- Filters Panel -->
+        <div class="mb-6 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
+          <!-- Filter header with clear button -->
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center space-x-2">
+              <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">Filters</h3>
+              <span x-show="hasActiveFilters" class="px-2 py-0.5 bg-beads-100 dark:bg-beads-900 text-beads-700 dark:text-beads-200 text-xs rounded-full">
+                Active
+              </span>
+            </div>
+            <button x-show="hasActiveFilters" @click="clearFilters()"
+                    class="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+              Clear all
+            </button>
+          </div>
 
-          <select x-model="filters.type" @change="loadIssues()"
-                  class="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
-            <option value="">All Types</option>
-            <option value="bug">Bug</option>
-            <option value="feature">Feature</option>
-            <option value="task">Task</option>
-            <option value="epic">Epic</option>
-            <option value="chore">Chore</option>
-          </select>
+          <!-- Filter rows -->
+          <div class="space-y-4">
+            <!-- Status filter (multi-select chips) -->
+            <div>
+              <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Status</label>
+              <div class="flex flex-wrap gap-2">
+                <template x-for="status in filterOptions.statuses" :key="status">
+                  <button @click="toggleFilter('status', status)"
+                          :class="isFilterSelected('status', status) ? 'bg-beads-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'"
+                          class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors">
+                    <span x-text="status.replace('_', ' ')"></span>
+                  </button>
+                </template>
+              </div>
+            </div>
 
-          <select x-model="filters.priority" @change="loadIssues()"
-                  class="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
-            <option value="">All Priorities</option>
-            <option value="0">P0 - Critical</option>
-            <option value="1">P1 - High</option>
-            <option value="2">P2 - Medium</option>
-            <option value="3">P3 - Low</option>
-            <option value="4">P4 - Backlog</option>
-          </select>
+            <!-- Type filter (multi-select chips) -->
+            <div>
+              <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Type</label>
+              <div class="flex flex-wrap gap-2">
+                <template x-for="type in filterOptions.types" :key="type">
+                  <button @click="toggleFilter('type', type)"
+                          :class="isFilterSelected('type', type) ? 'bg-beads-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'"
+                          class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors capitalize">
+                    <span x-text="type"></span>
+                  </button>
+                </template>
+              </div>
+            </div>
 
-          <select x-model="sort" @change="loadIssues()"
-                  class="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
-            <option value="priority">Sort by Priority</option>
-            <option value="updated">Sort by Updated</option>
-            <option value="score">Sort by Triage Score</option>
-            <option value="blocks">Sort by Blocks Count</option>
-          </select>
+            <!-- Priority filter (multi-select chips) -->
+            <div>
+              <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Priority</label>
+              <div class="flex flex-wrap gap-2">
+                <template x-for="priority in filterOptions.priorities" :key="priority">
+                  <button @click="toggleFilter('priority', priority)"
+                          :class="isFilterSelected('priority', priority) ? 'bg-beads-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'"
+                          class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors">
+                    <span x-text="'P' + priority"></span>
+                  </button>
+                </template>
+              </div>
+            </div>
+
+            <!-- Second row: Assignee, Blocked/Blocking toggles, Sort -->
+            <div class="flex flex-wrap gap-4 pt-2 border-t border-gray-200 dark:border-gray-700">
+              <!-- Assignee -->
+              <div class="flex-shrink-0">
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Assignee</label>
+                <select x-model="filters.assignee" @change="applyFilter()"
+                        class="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
+                  <option value="">All</option>
+                  <template x-for="assignee in filterOptions.assignees" :key="assignee">
+                    <option :value="assignee" x-text="assignee"></option>
+                  </template>
+                </select>
+              </div>
+
+              <!-- Blocked toggle -->
+              <div class="flex-shrink-0">
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Blocked</label>
+                <div class="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
+                  <button @click="filters.hasBlockers = null; applyFilter()"
+                          :class="filters.hasBlockers === null ? 'bg-beads-500 text-white' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300'"
+                          class="px-3 py-1.5 text-xs font-medium">All</button>
+                  <button @click="filters.hasBlockers = false; applyFilter()"
+                          :class="filters.hasBlockers === false ? 'bg-green-500 text-white' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300'"
+                          class="px-3 py-1.5 text-xs font-medium border-l border-gray-300 dark:border-gray-600">Ready</button>
+                  <button @click="filters.hasBlockers = true; applyFilter()"
+                          :class="filters.hasBlockers === true ? 'bg-red-500 text-white' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300'"
+                          class="px-3 py-1.5 text-xs font-medium border-l border-gray-300 dark:border-gray-600">Blocked</button>
+                </div>
+              </div>
+
+              <!-- Is Blocking toggle -->
+              <div class="flex-shrink-0">
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Blocking</label>
+                <div class="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
+                  <button @click="filters.isBlocking = null; applyFilter()"
+                          :class="filters.isBlocking === null ? 'bg-beads-500 text-white' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300'"
+                          class="px-3 py-1.5 text-xs font-medium">All</button>
+                  <button @click="filters.isBlocking = true; applyFilter()"
+                          :class="filters.isBlocking === true ? 'bg-orange-500 text-white' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300'"
+                          class="px-3 py-1.5 text-xs font-medium border-l border-gray-300 dark:border-gray-600">Blockers</button>
+                </div>
+              </div>
+
+              <!-- Sort -->
+              <div class="flex-shrink-0 ml-auto">
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Sort by</label>
+                <select x-model="sort" @change="applyFilter()"
+                        class="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
+                  <option value="priority">Priority</option>
+                  <option value="updated">Updated</option>
+                  <option value="created">Created</option>
+                  <option value="score">Triage Score</option>
+                  <option value="blocks">Blocks Count</option>
+                  <option value="title">Title</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Results count -->
+        <div class="mb-4 flex items-center justify-between">
+          <p class="text-sm text-gray-600 dark:text-gray-400">
+            Showing <span class="font-medium" x-text="issues.length"></span> of
+            <span class="font-medium" x-text="totalIssues"></span> issues
+          </p>
+          <div class="flex items-center space-x-2 text-sm text-gray-500">
+            <span>Page <span x-text="page"></span> of <span x-text="Math.ceil(totalIssues / pageSize) || 1"></span></span>
+          </div>
         </div>
 
         <!-- Issues list -->
