@@ -457,37 +457,95 @@ function getTopKSet(k = 5) {
 // ============================================================================
 
 /**
- * Query issues with filters, sorting, and pagination
+ * Build WHERE clauses from filters (shared between query and count)
  */
-function queryIssues(filters = {}, sort = 'priority', limit = 50, offset = 0) {
-  let sql = `SELECT * FROM issue_overview_mv WHERE 1=1`;
+function buildFilterClauses(filters = {}) {
+  const clauses = [];
   const params = [];
 
-  if (filters.status) {
-    sql += ` AND status = ?`;
-    params.push(filters.status);
+  // Status filter (supports array for multi-select)
+  if (filters.status?.length) {
+    const statuses = Array.isArray(filters.status) ? filters.status : [filters.status];
+    if (statuses.length === 1) {
+      clauses.push(`status = ?`);
+      params.push(statuses[0]);
+    } else {
+      clauses.push(`status IN (${statuses.map(() => '?').join(',')})`);
+      params.push(...statuses);
+    }
   }
 
-  if (filters.type) {
-    sql += ` AND issue_type = ?`;
-    params.push(filters.type);
+  // Type filter (supports array for multi-select)
+  if (filters.type?.length) {
+    const types = Array.isArray(filters.type) ? filters.type : [filters.type];
+    if (types.length === 1) {
+      clauses.push(`issue_type = ?`);
+      params.push(types[0]);
+    } else {
+      clauses.push(`issue_type IN (${types.map(() => '?').join(',')})`);
+      params.push(...types);
+    }
   }
 
-  if (filters.priority !== undefined && filters.priority !== '') {
-    sql += ` AND priority = ?`;
-    params.push(parseInt(filters.priority));
+  // Priority filter (supports array for multi-select)
+  if (filters.priority?.length) {
+    const priorities = (Array.isArray(filters.priority) ? filters.priority : [filters.priority])
+      .map(p => parseInt(p))
+      .filter(p => !isNaN(p));
+    if (priorities.length === 1) {
+      clauses.push(`priority = ?`);
+      params.push(priorities[0]);
+    } else if (priorities.length > 1) {
+      clauses.push(`priority IN (${priorities.map(() => '?').join(',')})`);
+      params.push(...priorities);
+    }
   }
 
+  // Assignee filter
+  if (filters.assignee) {
+    clauses.push(`assignee = ?`);
+    params.push(filters.assignee);
+  }
+
+  // Blocked filter
+  if (filters.hasBlockers === true || filters.hasBlockers === 'true') {
+    clauses.push(`(blocked_by_ids IS NOT NULL AND blocked_by_ids != '')`);
+  } else if (filters.hasBlockers === false || filters.hasBlockers === 'false') {
+    clauses.push(`(blocked_by_ids IS NULL OR blocked_by_ids = '')`);
+  }
+
+  // Blocking filter (has items depending on it)
+  if (filters.isBlocking === true || filters.isBlocking === 'true') {
+    clauses.push(`blocks_count > 0`);
+  }
+
+  // Label filter (JSON array contains)
+  if (filters.labels?.length) {
+    const labels = Array.isArray(filters.labels) ? filters.labels : [filters.labels];
+    const labelClauses = labels.map(() => `labels LIKE ?`);
+    clauses.push(`(${labelClauses.join(' OR ')})`);
+    params.push(...labels.map(l => `%"${l}"%`));
+  }
+
+  // Search filter (LIKE-based, FTS5 handled separately)
   if (filters.search) {
-    // Try FTS search first, fallback to LIKE
-    sql += ` AND (title LIKE ? OR description LIKE ? OR id LIKE ?)`;
+    clauses.push(`(title LIKE ? OR description LIKE ? OR id LIKE ?)`);
     const searchTerm = `%${filters.search}%`;
     params.push(searchTerm, searchTerm, searchTerm);
   }
 
-  if (filters.labels?.length) {
-    sql += ` AND (${filters.labels.map(() => `labels LIKE ?`).join(' OR ')})`;
-    params.push(...filters.labels.map(l => `%"${l}"%`));
+  return { clauses, params };
+}
+
+/**
+ * Query issues with filters, sorting, and pagination
+ */
+function queryIssues(filters = {}, sort = 'priority', limit = 50, offset = 0) {
+  const { clauses, params } = buildFilterClauses(filters);
+
+  let sql = `SELECT * FROM issue_overview_mv`;
+  if (clauses.length > 0) {
+    sql += ` WHERE ${clauses.join(' AND ')}`;
   }
 
   // Sorting
@@ -497,6 +555,8 @@ function queryIssues(filters = {}, sort = 'priority', limit = 50, offset = 0) {
     'score': 'triage_score DESC',
     'blocks': 'blocks_count DESC',
     'created': 'created_at DESC',
+    'title': 'title ASC',
+    'id': 'id ASC',
   };
   sql += ` ORDER BY ${sortMap[sort] || sortMap.priority}`;
   sql += ` LIMIT ? OFFSET ?`;
@@ -509,31 +569,44 @@ function queryIssues(filters = {}, sort = 'priority', limit = 50, offset = 0) {
  * Count issues matching filters
  */
 function countIssues(filters = {}) {
-  let sql = `SELECT COUNT(*) as count FROM issue_overview_mv WHERE 1=1`;
-  const params = [];
+  const { clauses, params } = buildFilterClauses(filters);
 
-  if (filters.status) {
-    sql += ` AND status = ?`;
-    params.push(filters.status);
-  }
-
-  if (filters.type) {
-    sql += ` AND issue_type = ?`;
-    params.push(filters.type);
-  }
-
-  if (filters.priority !== undefined && filters.priority !== '') {
-    sql += ` AND priority = ?`;
-    params.push(parseInt(filters.priority));
-  }
-
-  if (filters.search) {
-    sql += ` AND (title LIKE ? OR description LIKE ? OR id LIKE ?)`;
-    const searchTerm = `%${filters.search}%`;
-    params.push(searchTerm, searchTerm, searchTerm);
+  let sql = `SELECT COUNT(*) as count FROM issue_overview_mv`;
+  if (clauses.length > 0) {
+    sql += ` WHERE ${clauses.join(' AND ')}`;
   }
 
   return execScalar(sql, params) || 0;
+}
+
+/**
+ * Get unique values for filter dropdowns
+ */
+function getFilterOptions() {
+  return {
+    statuses: execQuery(`SELECT DISTINCT status FROM issue_overview_mv ORDER BY status`).map(r => r.status),
+    types: execQuery(`SELECT DISTINCT issue_type FROM issue_overview_mv ORDER BY issue_type`).map(r => r.issue_type),
+    priorities: execQuery(`SELECT DISTINCT priority FROM issue_overview_mv ORDER BY priority`).map(r => r.priority),
+    assignees: execQuery(`SELECT DISTINCT assignee FROM issue_overview_mv WHERE assignee IS NOT NULL AND assignee != '' ORDER BY assignee`).map(r => r.assignee),
+    labels: getUniqueLabels(),
+  };
+}
+
+/**
+ * Get unique labels from all issues
+ */
+function getUniqueLabels() {
+  const results = execQuery(`SELECT labels FROM issue_overview_mv WHERE labels IS NOT NULL AND labels != ''`);
+  const labelSet = new Set();
+  for (const row of results) {
+    try {
+      const labels = JSON.parse(row.labels);
+      if (Array.isArray(labels)) {
+        labels.forEach(l => labelSet.add(l));
+      }
+    } catch { /* ignore parse errors */ }
+  }
+  return Array.from(labelSet).sort();
 }
 
 /**
@@ -590,10 +663,69 @@ function getStats() {
     AND status IN ('open', 'in_progress')
   `) || 0;
 
+  // Count actionable (open/in_progress with NO open blockers)
+  stats.actionable = execScalar(`
+    SELECT COUNT(*) FROM issue_overview_mv
+    WHERE status IN ('open', 'in_progress')
+    AND (blocked_by_ids IS NULL OR blocked_by_ids = '')
+  `) || 0;
+
   // Total
   stats.total = execScalar(`SELECT COUNT(*) FROM issue_overview_mv`) || 0;
 
   return stats;
+}
+
+/**
+ * Get quick wins - actionable issues that unblock the most items
+ */
+function getQuickWins(limit = 5) {
+  return execQuery(`
+    SELECT * FROM issue_overview_mv
+    WHERE status IN ('open', 'in_progress')
+    AND (blocked_by_ids IS NULL OR blocked_by_ids = '')
+    ORDER BY blocks_count DESC, triage_score DESC
+    LIMIT ?
+  `, [limit]);
+}
+
+/**
+ * Get blockers to clear - issues blocking the most other issues
+ */
+function getBlockersToClose(limit = 5) {
+  return execQuery(`
+    SELECT * FROM issue_overview_mv
+    WHERE status IN ('open', 'in_progress')
+    AND blocks_count > 0
+    ORDER BY blocks_count DESC, triage_score DESC
+    LIMIT ?
+  `, [limit]);
+}
+
+/**
+ * Get distribution by type
+ */
+function getDistributionByType() {
+  return execQuery(`
+    SELECT issue_type as type, COUNT(*) as count
+    FROM issue_overview_mv
+    WHERE status != 'closed'
+    GROUP BY issue_type
+    ORDER BY count DESC
+  `);
+}
+
+/**
+ * Get distribution by priority
+ */
+function getDistributionByPriority() {
+  return execQuery(`
+    SELECT priority, COUNT(*) as count
+    FROM issue_overview_mv
+    WHERE status != 'closed'
+    GROUP BY priority
+    ORDER BY priority ASC
+  `);
 }
 
 /**
@@ -760,6 +892,10 @@ function beadsApp() {
     topByPageRank: [],
     topByTriageScore: [],
     topBlockers: [],
+    quickWins: [],
+    blockersToClose: [],
+    distributionByType: [],
+    distributionByPriority: [],
 
     // Selected issue
     selectedIssue: null,
@@ -796,6 +932,12 @@ function beadsApp() {
         this.topByPageRank = getTopByPageRank(10);
         this.topByTriageScore = getTopByTriageScore(10);
         this.topBlockers = getTopBlockers(10);
+
+        // Dashboard data
+        this.quickWins = getQuickWins(5);
+        this.blockersToClose = getBlockersToClose(5);
+        this.distributionByType = getDistributionByType();
+        this.distributionByPriority = getDistributionByPriority();
 
         // Load issues for list view
         this.loadIssues();

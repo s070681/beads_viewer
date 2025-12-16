@@ -195,58 +195,72 @@
     <main x-show="!loading && !error" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <!-- Dashboard view -->
       <div x-show="view === 'dashboard'">
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <!-- Stats cards -->
-          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <!-- Stats cards - 5 columns -->
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-gray-500 dark:text-gray-400">Open Issues</p>
-                <p class="text-3xl font-bold mt-1" x-text="stats.open || 0"></p>
+                <p class="text-sm text-gray-500 dark:text-gray-400">Open</p>
+                <p class="text-2xl font-bold mt-1" x-text="stats.open || 0"></p>
               </div>
-              <div class="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
-                <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div class="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
+                <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                 </svg>
               </div>
             </div>
           </div>
 
-          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5">
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-sm text-gray-500 dark:text-gray-400">In Progress</p>
-                <p class="text-3xl font-bold mt-1" x-text="stats.in_progress || 0"></p>
+                <p class="text-2xl font-bold mt-1" x-text="stats.in_progress || 0"></p>
               </div>
-              <div class="w-12 h-12 bg-yellow-100 dark:bg-yellow-900 rounded-lg flex items-center justify-center">
-                <svg class="w-6 h-6 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div class="w-10 h-10 bg-yellow-100 dark:bg-yellow-900 rounded-lg flex items-center justify-center">
+                <svg class="w-5 h-5 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
               </div>
             </div>
           </div>
 
-          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5">
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-sm text-gray-500 dark:text-gray-400">Blocked</p>
-                <p class="text-3xl font-bold mt-1" x-text="stats.blocked || 0"></p>
+                <p class="text-2xl font-bold mt-1" x-text="stats.blocked || 0"></p>
               </div>
-              <div class="w-12 h-12 bg-red-100 dark:bg-red-900 rounded-lg flex items-center justify-center">
-                <svg class="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div class="w-10 h-10 bg-red-100 dark:bg-red-900 rounded-lg flex items-center justify-center">
+                <svg class="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
                 </svg>
               </div>
             </div>
           </div>
 
-          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm text-gray-500 dark:text-gray-400">Actionable</p>
+                <p class="text-2xl font-bold mt-1 text-emerald-600 dark:text-emerald-400" x-text="stats.actionable || 0"></p>
+              </div>
+              <div class="w-10 h-10 bg-emerald-100 dark:bg-emerald-900 rounded-lg flex items-center justify-center">
+                <svg class="w-5 h-5 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5">
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-sm text-gray-500 dark:text-gray-400">Closed</p>
-                <p class="text-3xl font-bold mt-1" x-text="stats.closed || 0"></p>
+                <p class="text-2xl font-bold mt-1" x-text="stats.closed || 0"></p>
               </div>
-              <div class="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
-                <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div class="w-10 h-10 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
+                <svg class="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
               </div>
@@ -254,51 +268,159 @@
           </div>
         </div>
 
-        <!-- Top picks and quick wins -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Quick Wins and Blockers to Clear -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-            <h2 class="text-lg font-semibold mb-4">Top Picks</h2>
-            <div class="space-y-3">
-              <template x-for="issue in topPicks" :key="issue.id">
-                <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
-                     :class="'priority-' + issue.priority"
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-lg font-semibold flex items-center">
+                <svg class="w-5 h-5 text-emerald-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+                Quick Wins
+              </h2>
+              <span class="text-xs text-gray-500 dark:text-gray-400">Ready to start, max unblock</span>
+            </div>
+            <div class="space-y-2">
+              <template x-for="issue in quickWins" :key="issue.id">
+                <div class="p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors"
                      @click="showIssue(issue.id)">
                   <div class="flex items-start justify-between">
-                    <div>
-                      <span class="text-xs font-mono text-gray-500 dark:text-gray-400" x-text="issue.id"></span>
-                      <h3 class="font-medium mt-1" x-text="issue.title"></h3>
+                    <div class="flex-1 min-w-0">
+                      <span class="text-xs font-mono text-emerald-600 dark:text-emerald-400" x-text="issue.id"></span>
+                      <h3 class="font-medium truncate" x-text="issue.title"></h3>
                     </div>
-                    <span class="px-2 py-1 text-xs font-medium rounded-full"
-                          :class="'status-' + issue.status"
-                          x-text="issue.status"></span>
-                  </div>
-                  <div class="flex items-center space-x-4 mt-2 text-sm text-gray-500 dark:text-gray-400">
-                    <span x-show="issue.triage_score">Score: <span x-text="issue.triage_score?.toFixed(2)"></span></span>
-                    <span x-show="issue.blocks_count">Blocks: <span x-text="issue.blocks_count"></span></span>
+                    <span x-show="issue.blocks_count" class="ml-2 px-2 py-0.5 text-xs font-medium bg-emerald-200 dark:bg-emerald-800 text-emerald-800 dark:text-emerald-200 rounded">
+                      unblocks <span x-text="issue.blocks_count"></span>
+                    </span>
                   </div>
                 </div>
               </template>
-              <p x-show="topPicks.length === 0" class="text-gray-500 dark:text-gray-400 text-center py-4">No issues found</p>
+              <p x-show="quickWins.length === 0" class="text-gray-500 dark:text-gray-400 text-center py-4 text-sm">No quick wins available</p>
             </div>
           </div>
 
           <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-            <h2 class="text-lg font-semibold mb-4">Recent Activity</h2>
-            <div class="space-y-3">
-              <template x-for="issue in recentIssues" :key="issue.id">
-                <div class="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-lg font-semibold flex items-center">
+                <svg class="w-5 h-5 text-orange-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+                Blockers to Clear
+              </h2>
+              <span class="text-xs text-gray-500 dark:text-gray-400">Blocking the most issues</span>
+            </div>
+            <div class="space-y-2">
+              <template x-for="issue in blockersToClose" :key="issue.id">
+                <div class="p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
                      @click="showIssue(issue.id)">
-                  <span class="px-2 py-1 text-xs font-medium rounded-full"
-                        :class="'status-' + issue.status"
-                        x-text="issue.status"></span>
-                  <div class="flex-1 min-w-0">
-                    <p class="font-medium truncate" x-text="issue.title"></p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400" x-text="formatDate(issue.updated_at)"></p>
+                  <div class="flex items-start justify-between">
+                    <div class="flex-1 min-w-0">
+                      <span class="text-xs font-mono text-orange-600 dark:text-orange-400" x-text="issue.id"></span>
+                      <h3 class="font-medium truncate" x-text="issue.title"></h3>
+                    </div>
+                    <span class="ml-2 px-2 py-0.5 text-xs font-medium bg-orange-200 dark:bg-orange-800 text-orange-800 dark:text-orange-200 rounded">
+                      blocks <span x-text="issue.blocks_count"></span>
+                    </span>
                   </div>
                 </div>
               </template>
-              <p x-show="recentIssues.length === 0" class="text-gray-500 dark:text-gray-400 text-center py-4">No recent activity</p>
+              <p x-show="blockersToClose.length === 0" class="text-gray-500 dark:text-gray-400 text-center py-4 text-sm">No blockers found</p>
             </div>
+          </div>
+        </div>
+
+        <!-- Distribution charts and Top picks -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <!-- Distribution by Type -->
+          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <h2 class="text-lg font-semibold mb-4">By Type</h2>
+            <div class="space-y-3">
+              <template x-for="item in distributionByType" :key="item.type">
+                <div class="flex items-center">
+                  <span class="w-20 text-sm text-gray-600 dark:text-gray-400 capitalize" x-text="item.type || 'unknown'"></span>
+                  <div class="flex-1 mx-3 h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div class="h-full bg-beads-500 rounded-full transition-all duration-500"
+                         :style="'width: ' + (stats.total ? Math.round(item.count / (stats.open + stats.in_progress) * 100) : 0) + '%'"></div>
+                  </div>
+                  <span class="w-8 text-sm font-medium text-right" x-text="item.count"></span>
+                </div>
+              </template>
+              <p x-show="distributionByType.length === 0" class="text-gray-500 dark:text-gray-400 text-center py-4 text-sm">No data</p>
+            </div>
+          </div>
+
+          <!-- Distribution by Priority -->
+          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <h2 class="text-lg font-semibold mb-4">By Priority</h2>
+            <div class="space-y-3">
+              <template x-for="item in distributionByPriority" :key="item.priority">
+                <div class="flex items-center">
+                  <span class="w-12 text-sm font-medium"
+                        :class="{
+                          'text-red-600 dark:text-red-400': item.priority === 0,
+                          'text-orange-600 dark:text-orange-400': item.priority === 1,
+                          'text-blue-600 dark:text-blue-400': item.priority === 2,
+                          'text-gray-600 dark:text-gray-400': item.priority >= 3
+                        }"
+                        x-text="'P' + item.priority"></span>
+                  <div class="flex-1 mx-3 h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div class="h-full rounded-full transition-all duration-500"
+                         :class="{
+                           'bg-red-500': item.priority === 0,
+                           'bg-orange-500': item.priority === 1,
+                           'bg-blue-500': item.priority === 2,
+                           'bg-gray-400': item.priority >= 3
+                         }"
+                         :style="'width: ' + (stats.total ? Math.round(item.count / (stats.open + stats.in_progress) * 100) : 0) + '%'"></div>
+                  </div>
+                  <span class="w-8 text-sm font-medium text-right" x-text="item.count"></span>
+                </div>
+              </template>
+              <p x-show="distributionByPriority.length === 0" class="text-gray-500 dark:text-gray-400 text-center py-4 text-sm">No data</p>
+            </div>
+          </div>
+
+          <!-- Top Picks -->
+          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <h2 class="text-lg font-semibold mb-4">Top Picks</h2>
+            <div class="space-y-2">
+              <template x-for="issue in topPicks" :key="issue.id">
+                <div class="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                     :class="'priority-' + issue.priority"
+                     @click="showIssue(issue.id)">
+                  <div class="flex items-start justify-between">
+                    <div class="flex-1 min-w-0">
+                      <span class="text-xs font-mono text-gray-500 dark:text-gray-400" x-text="issue.id"></span>
+                      <h3 class="font-medium truncate text-sm" x-text="issue.title"></h3>
+                    </div>
+                    <span class="px-2 py-0.5 text-xs font-medium rounded-full ml-2"
+                          :class="'status-' + issue.status"
+                          x-text="issue.status"></span>
+                  </div>
+                </div>
+              </template>
+              <p x-show="topPicks.length === 0" class="text-gray-500 dark:text-gray-400 text-center py-4 text-sm">No issues found</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <h2 class="text-lg font-semibold mb-4">Recent Activity</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <template x-for="issue in recentIssues" :key="issue.id">
+              <div class="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors"
+                   @click="showIssue(issue.id)">
+                <span class="px-2 py-1 text-xs font-medium rounded-full shrink-0"
+                      :class="'status-' + issue.status"
+                      x-text="issue.status"></span>
+                <div class="flex-1 min-w-0">
+                  <p class="font-medium truncate text-sm" x-text="issue.title"></p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400" x-text="formatDate(issue.updated_at)"></p>
+                </div>
+              </div>
+            </template>
+            <p x-show="recentIssues.length === 0" class="text-gray-500 dark:text-gray-400 text-center py-4 col-span-full">No recent activity</p>
           </div>
         </div>
       </div>
