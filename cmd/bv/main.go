@@ -1776,14 +1776,33 @@ func main() {
 
 	if *robotPlan {
 		analyzer := analysis.NewAnalyzer(issues)
-		// ensure config captured for output
+		// For --robot-plan we primarily need Phase 1 metrics (degree/topo/density).
+		// However, we still emit a stable status contract for agents. If the user
+		// explicitly asks for full analysis, honor it; otherwise, skip expensive
+		// centrality metrics and record the skip reasons deterministically.
 		cfg := analysis.ConfigForSize(len(issues), countEdges(issues))
 		if *forceFullAnalysis {
 			cfg = analysis.FullAnalysisConfig()
+		} else {
+			const skipReason = "not computed for --robot-plan"
+			cfg.ComputePageRank = false
+			cfg.PageRankSkipReason = skipReason
+			cfg.ComputeBetweenness = false
+			cfg.BetweennessMode = analysis.BetweennessSkip
+			cfg.BetweennessSkipReason = skipReason
+			cfg.ComputeHITS = false
+			cfg.HITSSkipReason = skipReason
+			cfg.ComputeEigenvector = false
+			cfg.ComputeCriticalPath = false
+			cfg.ComputeCycles = false
+			cfg.CyclesSkipReason = skipReason
 		}
-		analyzer.SetConfig(&cfg)
+
 		plan := analyzer.GetExecutionPlan()
-		status := analyzer.AnalyzeAsyncWithConfig(cfg).Status() // reuse config for status snapshot
+
+		stats := analyzer.AnalyzeAsyncWithConfig(cfg)
+		stats.WaitForPhase2()
+		status := stats.Status()
 
 		// Wrap with metadata
 		output := struct {
@@ -1828,7 +1847,9 @@ func main() {
 			cfg = analysis.FullAnalysisConfig()
 		}
 		analyzer.SetConfig(&cfg)
-		status := analyzer.AnalyzeAsyncWithConfig(cfg).Status()
+		stats := analyzer.AnalyzeAsyncWithConfig(cfg)
+		stats.WaitForPhase2()
+		status := stats.Status()
 
 		// Use enhanced recommendations with what-if deltas and top reasons (bv-83)
 		recommendations := analyzer.GenerateEnhancedRecommendations()
