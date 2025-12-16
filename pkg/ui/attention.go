@@ -22,18 +22,14 @@ func ComputeAttentionView(issues []model.Issue, width int) (string, error) {
 	}
 
 	var b strings.Builder
-	row := func(cells []string, bold bool) {
+	row := func(cells []string, _ bool) {
 		var parts []string
 		for i, c := range cells {
 			c = truncate(c, colWidths[i])
 			parts = append(parts, padRight(c, colWidths[i]))
 		}
 		line := strings.Join(parts, " | ")
-		if bold {
-			b.WriteString(line)
-		} else {
-			b.WriteString(line)
-		}
+		b.WriteString(line)
 		b.WriteString("\n")
 	}
 
