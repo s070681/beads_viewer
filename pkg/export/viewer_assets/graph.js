@@ -466,6 +466,10 @@ function getNodeSize(node) {
 }
 
 function getNodeColor(node) {
+    // What-if simulation states take priority
+    if (node._whatIfState === 'closing') return THEME.accent.green;
+    if (node._whatIfState === 'unblocked') return THEME.accent.cyan;
+
     // Cycle nodes get special color
     if (node.inCycle) return THEME.accent.pink;
 
@@ -501,8 +505,16 @@ function drawNode(node, ctx, globalScale) {
     ctx.save();
     ctx.globalAlpha = opacity;
 
+    // Enhanced glow for what-if states
+    if (node._whatIfState === 'closing') {
+        ctx.shadowColor = THEME.accent.green;
+        ctx.shadowBlur = 25;
+    } else if (node._whatIfState === 'unblocked') {
+        ctx.shadowColor = THEME.accent.cyan;
+        ctx.shadowBlur = 20;
+    }
     // Glow effect for important nodes (PageRank sums to 1.0, so threshold ~2x average)
-    if (node.pagerank > 0.03 || isHovered || isSelected) {
+    else if (node.pagerank > 0.03 || isHovered || isSelected) {
         ctx.shadowColor = color;
         ctx.shadowBlur = isHovered ? 20 : 10;
     }
@@ -583,13 +595,20 @@ function getLinkDistance(link) {
 
 function getLinkColor(link) {
     const linkId = `${link.source?.id || link.source}-${link.target?.id || link.target}`;
+    const sourceNode = typeof link.source === 'object' ? link.source : store.nodeMap.get(link.source);
+    const targetNode = typeof link.target === 'object' ? link.target : store.nodeMap.get(link.target);
+
+    // What-if cascade links (bright green for unblocking edges)
+    if (whatIfState.active && store.highlightedLinks.has(linkId)) {
+        if (sourceNode?._whatIfState === 'closing' || targetNode?._whatIfState === 'unblocked') {
+            return THEME.accent.green;
+        }
+    }
 
     // Highlighted links
     if (store.highlightedLinks.has(linkId)) return THEME.link.highlighted;
 
     // Cycle links
-    const sourceNode = typeof link.source === 'object' ? link.source : store.nodeMap.get(link.source);
-    const targetNode = typeof link.target === 'object' ? link.target : store.nodeMap.get(link.target);
     if (sourceNode?.inCycle && targetNode?.inCycle) return THEME.link.cycle;
 
     return THEME.link.default;
@@ -678,13 +697,19 @@ function drawLink(link, ctx, globalScale) {
 function handleNodeClick(node, event) {
     if (!node) return;
 
-    // Shift+click: add to selection
+    // Shift+click: what-if simulation
     // Ctrl+click: show dependencies
     // Regular click: select
 
-    if (event.ctrlKey || event.metaKey) {
+    if (event.shiftKey) {
+        performWhatIf(node);
+    } else if (event.ctrlKey || event.metaKey) {
         highlightDependencyPath(node);
     } else {
+        // If what-if is active, reset it
+        if (whatIfState.active) {
+            resetWhatIf();
+        }
         selectNode(node);
     }
 
@@ -741,6 +766,224 @@ function handleBackgroundClick(event) {
 
 function handleZoom(transform) {
     dispatchEvent('zoom', { transform, scale: transform.k });
+}
+
+// ============================================================================
+// WHAT-IF SIMULATION
+// ============================================================================
+
+// What-if animation state
+const whatIfState = {
+    active: false,
+    sourceNode: null,
+    unblockedNodes: new Set(),
+    animationPhase: 0,
+    animationTimer: null
+};
+
+/**
+ * Perform what-if simulation for closing an issue
+ * @param {Object} node - The node to simulate closing
+ */
+export function performWhatIf(node) {
+    if (!node || !store.wasmReady || !store.wasmGraph) {
+        console.warn('[bv-graph] What-if: WASM not ready');
+        return null;
+    }
+
+    // Only simulate on open issues
+    if (node.status === 'closed') {
+        showToast('Issue is already closed', 'info');
+        return null;
+    }
+
+    const idx = store.wasmGraph.nodeIdx(node.id);
+    if (idx === undefined) return null;
+
+    // Build closed set from current issue states
+    const closedSet = buildClosedSet();
+
+    // Call WASM what-if
+    let result;
+    try {
+        result = store.wasmGraph.whatIfClose(idx, closedSet);
+        if (typeof result === 'string') {
+            result = JSON.parse(result);
+        }
+    } catch (e) {
+        console.error('[bv-graph] What-if computation failed:', e);
+        return null;
+    }
+
+    // Animate the cascade
+    animateWhatIfCascade(node, result);
+
+    return result;
+}
+
+/**
+ * Build a boolean array indicating which nodes are already closed
+ */
+function buildClosedSet() {
+    const n = store.wasmGraph.nodeCount();
+    const closedSet = new Uint8Array(n);
+
+    store.issues.forEach(issue => {
+        if (issue.status === 'closed') {
+            const idx = store.wasmGraph.nodeIdx(issue.id);
+            if (idx !== undefined && idx < n) {
+                closedSet[idx] = 1;
+            }
+        }
+    });
+
+    return closedSet;
+}
+
+/**
+ * Animate the what-if cascade effect
+ */
+function animateWhatIfCascade(sourceNode, result) {
+    // Clear any existing animation
+    resetWhatIf();
+
+    whatIfState.active = true;
+    whatIfState.sourceNode = sourceNode;
+    whatIfState.unblockedNodes.clear();
+
+    // Get unblocked node IDs
+    const unblockedIds = (result.unblocked_ids || []).map(idx => {
+        return store.wasmGraph.nodeId(idx);
+    }).filter(Boolean);
+
+    // Phase 1: Highlight the source node (pulse green, "closing")
+    store.highlightedNodes.clear();
+    store.highlightedLinks.clear();
+    store.highlightedNodes.add(sourceNode.id);
+
+    // Add closing visual state to source
+    const graphData = store.graph.graphData();
+    const sourceGraphNode = graphData.nodes.find(n => n.id === sourceNode.id);
+    if (sourceGraphNode) {
+        sourceGraphNode._whatIfState = 'closing';
+    }
+
+    store.graph.refresh();
+    dispatchEvent('whatIfStart', { node: sourceNode, result });
+
+    // Phase 2: Ripple out to unblocked nodes with staggered animation
+    whatIfState.animationPhase = 1;
+    let delay = 300;
+
+    unblockedIds.forEach((id, i) => {
+        setTimeout(() => {
+            whatIfState.unblockedNodes.add(id);
+            store.highlightedNodes.add(id);
+
+            // Mark node as unblocked
+            const unblockedNode = graphData.nodes.find(n => n.id === id);
+            if (unblockedNode) {
+                unblockedNode._whatIfState = 'unblocked';
+            }
+
+            // Highlight the edge from blocker to this node
+            store.dependencies.forEach(dep => {
+                if (dep.issue_id === sourceNode.id && dep.depends_on_id === id) {
+                    store.highlightedLinks.add(`${sourceNode.id}-${id}`);
+                }
+                // Also highlight edges from other closed nodes that contribute
+                const blocker = store.nodeMap.get(dep.issue_id);
+                if (blocker && (blocker.status === 'closed' || dep.issue_id === sourceNode.id) && dep.depends_on_id === id) {
+                    store.highlightedLinks.add(`${dep.issue_id}-${id}`);
+                }
+            });
+
+            store.graph.refresh();
+            dispatchEvent('whatIfUnblock', { nodeId: id, index: i, total: unblockedIds.length });
+        }, delay + i * 150);
+    });
+
+    // Phase 3: Show summary after animations complete
+    const summaryDelay = delay + unblockedIds.length * 150 + 200;
+    whatIfState.animationTimer = setTimeout(() => {
+        whatIfState.animationPhase = 2;
+        showWhatIfSummary(sourceNode, result, unblockedIds);
+    }, summaryDelay);
+}
+
+/**
+ * Show what-if summary popup
+ */
+function showWhatIfSummary(sourceNode, result, unblockedIds) {
+    const directCount = result.direct_unblocks || unblockedIds.length;
+    const transitiveCount = result.transitive_unblocks || directCount;
+    const parallelGain = result.parallel_gain || 0;
+
+    dispatchEvent('whatIfComplete', {
+        node: sourceNode,
+        directUnblocks: directCount,
+        transitiveUnblocks: transitiveCount,
+        parallelGain: parallelGain,
+        unblockedIds: unblockedIds
+    });
+
+    // Create summary toast
+    if (directCount > 0) {
+        showToast(
+            `Closing ${sourceNode.id} would unblock ${directCount} issue${directCount > 1 ? 's' : ''} directly` +
+            (transitiveCount > directCount ? `, ${transitiveCount} total in cascade` : ''),
+            'success'
+        );
+    } else {
+        showToast(`Closing ${sourceNode.id} would not immediately unblock any issues`, 'info');
+    }
+}
+
+/**
+ * Reset what-if visualization state
+ */
+export function resetWhatIf() {
+    if (whatIfState.animationTimer) {
+        clearTimeout(whatIfState.animationTimer);
+        whatIfState.animationTimer = null;
+    }
+
+    // Clear visual states
+    const graphData = store.graph?.graphData();
+    if (graphData) {
+        graphData.nodes.forEach(node => {
+            delete node._whatIfState;
+        });
+    }
+
+    whatIfState.active = false;
+    whatIfState.sourceNode = null;
+    whatIfState.unblockedNodes.clear();
+    whatIfState.animationPhase = 0;
+
+    store.highlightedNodes.clear();
+    store.highlightedLinks.clear();
+    store.graph?.refresh();
+
+    dispatchEvent('whatIfReset');
+}
+
+/**
+ * Check if what-if simulation is active
+ */
+export function isWhatIfActive() {
+    return whatIfState.active;
+}
+
+/**
+ * Get what-if state
+ */
+export function getWhatIfState() {
+    return {
+        active: whatIfState.active,
+        sourceNode: whatIfState.sourceNode,
+        unblockedCount: whatIfState.unblockedNodes.size
+    };
 }
 
 // ============================================================================
@@ -967,7 +1210,17 @@ function setupKeyboardShortcuts() {
 
         switch (e.key) {
             case 'Escape':
-                clearSelection();
+                if (whatIfState.active) {
+                    resetWhatIf();
+                } else {
+                    clearSelection();
+                }
+                break;
+            case 'w':
+                // What-if on selected node
+                if (store.selectedNode) {
+                    performWhatIf(store.selectedNode);
+                }
                 break;
             case 'f':
                 if (e.ctrlKey || e.metaKey) {
@@ -1094,6 +1347,18 @@ function hideTooltip() {
 
 function dispatchEvent(name, detail = {}) {
     document.dispatchEvent(new CustomEvent(`bv-graph:${name}`, { detail }));
+}
+
+/**
+ * Show a toast notification (delegates to parent viewer)
+ */
+function showToast(message, type = 'info') {
+    // Dispatch event for parent viewer to handle
+    window.dispatchEvent(new CustomEvent('show-toast', {
+        detail: { message, type, id: Date.now() }
+    }));
+    // Also log for debugging
+    console.log(`[bv-graph] Toast (${type}): ${message}`);
 }
 
 function truncate(str, maxLen) {
