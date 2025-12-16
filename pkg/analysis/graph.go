@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"fmt"
 	"math"
 	"sort"
 	"sync"
@@ -690,6 +691,11 @@ func (a *Analyzer) computePhase2WithProfile(stats *GraphStats, config AnalysisCo
 		prStart := time.Now()
 		prDone := make(chan map[int64]float64, 1)
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Panic -> implicitly causes timeout in parent
+				}
+			}()
 			prDone <- network.PageRank(a.g, 0.85, 1e-6)
 		}()
 
@@ -715,6 +721,11 @@ func (a *Analyzer) computePhase2WithProfile(stats *GraphStats, config AnalysisCo
 		bwStart := time.Now()
 		bwDone := make(chan BetweennessResult, 1)
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Panic -> implicitly causes timeout in parent
+				}
+			}()
 			// Choose algorithm based on mode
 			if config.BetweennessMode == BetweennessApproximate && config.BetweennessSampleSize > 0 {
 				bwDone <- ApproxBetweenness(a.g, config.BetweennessSampleSize)
@@ -760,6 +771,11 @@ func (a *Analyzer) computePhase2WithProfile(stats *GraphStats, config AnalysisCo
 		hitsStart := time.Now()
 		hitsDone := make(chan map[int64]network.HubAuthority, 1)
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Panic -> implicitly causes timeout in parent
+				}
+			}()
 			hitsDone <- network.HITS(a.g, 1e-3)
 		}()
 
@@ -807,6 +823,11 @@ func (a *Analyzer) computePhase2WithProfile(stats *GraphStats, config AnalysisCo
 		if hasCycles {
 			cyclesDone := make(chan [][]graph.Node, 1)
 			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						// Panic -> implicitly causes timeout in parent
+					}
+				}()
 				cyclesDone <- topo.DirectedCyclesIn(a.g)
 			}()
 
@@ -926,6 +947,31 @@ func (a *Analyzer) computePhase1(stats *GraphStats) {
 func (a *Analyzer) computePhase2(stats *GraphStats, config AnalysisConfig) {
 	defer close(stats.phase2Done)
 
+	// Recover from panics to prevent crashing the entire application
+	defer func() {
+		if r := recover(); r != nil {
+			stats.mu.Lock()
+			defer stats.mu.Unlock()
+
+			reason := fmt.Sprintf("panic: %v", r)
+			failEntry := statusEntry{State: "panic", Reason: reason}
+
+			// Mark all as failed so UI knows
+			stats.status = MetricStatus{
+				PageRank:     failEntry,
+				Betweenness:  failEntry,
+				Eigenvector:  failEntry,
+				HITS:         failEntry,
+				Critical:     failEntry,
+				Cycles:       failEntry,
+				KCore:        failEntry,
+				Articulation: failEntry,
+				Slack:        failEntry,
+			}
+			stats.phase2Ready = true
+		}
+	}()
+
 	// Compute all metrics to LOCAL variables first (no lock needed)
 	localPageRank := make(map[string]float64)
 	localBetweenness := make(map[string]float64)
@@ -945,6 +991,11 @@ func (a *Analyzer) computePhase2(stats *GraphStats, config AnalysisConfig) {
 	if config.ComputePageRank {
 		prDone := make(chan map[int64]float64, 1)
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Panic -> implicitly causes timeout in parent
+				}
+			}()
 			prDone <- network.PageRank(a.g, 0.85, 1e-6)
 		}()
 
@@ -968,6 +1019,11 @@ func (a *Analyzer) computePhase2(stats *GraphStats, config AnalysisConfig) {
 	if config.ComputeBetweenness {
 		bwDone := make(chan BetweennessResult, 1)
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Panic -> implicitly causes timeout in parent
+				}
+			}()
 			// Choose algorithm based on mode
 			if config.BetweennessMode == BetweennessApproximate && config.BetweennessSampleSize > 0 {
 				bwDone <- ApproxBetweenness(a.g, config.BetweennessSampleSize)
@@ -1009,6 +1065,11 @@ func (a *Analyzer) computePhase2(stats *GraphStats, config AnalysisConfig) {
 	if config.ComputeHITS && a.g.Edges().Len() > 0 {
 		hitsDone := make(chan map[int64]network.HubAuthority, 1)
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Panic -> implicitly causes timeout in parent
+				}
+			}()
 			hitsDone <- network.HITS(a.g, 1e-3)
 		}()
 
@@ -1052,6 +1113,11 @@ func (a *Analyzer) computePhase2(stats *GraphStats, config AnalysisConfig) {
 		if hasCycles {
 			cyclesDone := make(chan [][]graph.Node, 1)
 			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						// Panic -> implicitly causes timeout in parent
+					}
+				}()
 				cyclesDone <- topo.DirectedCyclesIn(a.g)
 			}()
 

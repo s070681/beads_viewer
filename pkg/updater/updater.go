@@ -115,11 +115,59 @@ func compareVersions(v1, v2 string) int {
 			if !p1.prerelease && p2.prerelease {
 				return 1
 			}
-			// both prerelease: lexicographic compare of labels
-			if p1.preLabel > p2.preLabel {
+			// both prerelease: compare dot-separated identifiers
+			parts1 := strings.Split(p1.preLabel, ".")
+			parts2 := strings.Split(p2.preLabel, ".")
+
+			len1 := len(parts1)
+			len2 := len(parts2)
+			limit := len1
+			if len2 < limit {
+				limit = len2
+			}
+
+			for i := 0; i < limit; i++ {
+				part1 := parts1[i]
+				part2 := parts2[i]
+
+				// Check if parts are numeric
+				num1, err1 := strconv.Atoi(part1)
+				num2, err2 := strconv.Atoi(part2)
+
+				isNum1 := err1 == nil
+				isNum2 := err2 == nil
+
+				if isNum1 && isNum2 {
+					// Both numeric: compare numerically
+					if num1 > num2 {
+						return 1
+					}
+					if num1 < num2 {
+						return -1
+					}
+				} else if !isNum1 && !isNum2 {
+					// Both non-numeric: compare lexically
+					if part1 > part2 {
+						return 1
+					}
+					if part1 < part2 {
+						return -1
+					}
+				} else {
+					// One numeric, one non-numeric.
+					// SemVer: numeric has lower precedence than non-numeric
+					if isNum1 {
+						return -1 // part1 is numeric (lower)
+					}
+					return 1 // part2 is numeric (lower) -> part1 is non-numeric (higher)
+				}
+			}
+
+			// If all compared parts are equal, larger set of fields has higher precedence
+			if len1 > len2 {
 				return 1
 			}
-			if p1.preLabel < p2.preLabel {
+			if len1 < len2 {
 				return -1
 			}
 		}

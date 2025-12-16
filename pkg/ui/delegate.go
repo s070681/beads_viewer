@@ -137,6 +137,13 @@ func (d IssueDelegate) Render(w io.Writer, m list.Model, index int, listItem lis
 		leftFixedWidth += 2
 	}
 
+	// Triage indicator width (bv-151)
+	if i.IsQuickWin {
+		leftFixedWidth += 3 // ⭐ + space
+	} else if i.UnblocksCount > 0 {
+		leftFixedWidth += 4 + len(fmt.Sprintf("%d", i.UnblocksCount)) // 🔓N or ↪N + space
+	}
+
 	// Status badge (polished)
 	statusBadge := RenderStatusBadge(string(i.Issue.Status))
 	statusBadgeWidth := lipgloss.Width(statusBadge)
@@ -208,6 +215,20 @@ func (d IssueDelegate) Render(w io.Writer, m list.Model, index int, listItem lis
 		} else {
 			leftSide.WriteString(" ")
 		}
+		leftSide.WriteString(" ")
+	}
+
+	// Triage indicators (bv-151): Quick win ⭐ and Unblocks count 🔓
+	triageIndicator := ""
+	if i.IsQuickWin {
+		triageIndicator = t.Renderer.NewStyle().Foreground(lipgloss.Color("#FFD700")).Render("⭐")
+	} else if i.IsBlocker && i.UnblocksCount > 0 {
+		triageIndicator = t.Renderer.NewStyle().Foreground(lipgloss.Color("#50FA7B")).Render(fmt.Sprintf("🔓%d", i.UnblocksCount))
+	} else if i.UnblocksCount > 0 {
+		triageIndicator = t.Renderer.NewStyle().Foreground(lipgloss.Color("#6272A4")).Render(fmt.Sprintf("↪%d", i.UnblocksCount))
+	}
+	if triageIndicator != "" {
+		leftSide.WriteString(triageIndicator)
 		leftSide.WriteString(" ")
 	}
 

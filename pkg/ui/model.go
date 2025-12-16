@@ -51,6 +51,7 @@ const (
 	focusQuitConfirm
 	focusTimeTravelInput
 	focusHistory
+	focusAttention
 )
 
 // UpdateMsg is sent when a new version is available
@@ -173,6 +174,7 @@ type Model struct {
 	labelHealthCache      analysis.LabelAnalysisResult
 	attentionCached       bool
 	attentionCache        analysis.LabelAttentionResult
+	flowMatrixText        string
 
 	// Actionable view
 	actionableView ActionableModel
@@ -195,6 +197,13 @@ type Model struct {
 	// Priority hints
 	showPriorityHints bool
 	priorityHints     map[string]*analysis.PriorityRecommendation // issueID -> recommendation
+
+	// Triage insights (bv-151)
+	triageScores  map[string]float64                // issueID -> triage score
+	triageReasons map[string]analysis.TriageReasons // issueID -> reasons
+	unblocksMap   map[string][]string               // issueID -> IDs that would be unblocked
+	quickWinSet   map[string]bool                   // issueID -> true if quick win
+	blockerSet    map[string]bool                   // issueID -> true if significant blocker
 
 	// Recipe picker
 	showRecipePicker bool
@@ -423,6 +432,47 @@ func NewModel(issues []model.Issue, activeRecipe *recipe.Recipe, beadsPath strin
 	// This avoids blocking startup on expensive graph analysis
 	priorityHints := make(map[string]*analysis.PriorityRecommendation)
 
+	// Compute triage insights (bv-151)
+	triageResult := analysis.ComputeTriage(issues)
+	triageScores := make(map[string]float64, len(triageResult.Recommendations))
+	triageReasons := make(map[string]analysis.TriageReasons, len(triageResult.Recommendations))
+	quickWinSet := make(map[string]bool, len(triageResult.QuickWins))
+	blockerSet := make(map[string]bool, len(triageResult.BlockersToClear))
+	unblocksMap := make(map[string][]string, len(triageResult.Recommendations))
+
+	for _, rec := range triageResult.Recommendations {
+		triageScores[rec.ID] = rec.Score
+		if len(rec.Reasons) > 0 {
+			triageReasons[rec.ID] = analysis.TriageReasons{
+				Primary:    rec.Reasons[0],
+				All:        rec.Reasons,
+				ActionHint: rec.Action,
+			}
+		}
+		unblocksMap[rec.ID] = rec.UnblocksIDs
+	}
+	for _, qw := range triageResult.QuickWins {
+		quickWinSet[qw.ID] = true
+	}
+	for _, bl := range triageResult.BlockersToClear {
+		blockerSet[bl.ID] = true
+	}
+
+	// Update items with triage data
+	for i := range items {
+		if issueItem, ok := items[i].(IssueItem); ok {
+			issueItem.TriageScore = triageScores[issueItem.Issue.ID]
+			if reasons, exists := triageReasons[issueItem.Issue.ID]; exists {
+				issueItem.TriageReason = reasons.Primary
+				issueItem.TriageReasons = reasons.All
+			}
+			issueItem.IsQuickWin = quickWinSet[issueItem.Issue.ID]
+			issueItem.IsBlocker = blockerSet[issueItem.Issue.ID]
+			issueItem.UnblocksCount = len(unblocksMap[issueItem.Issue.ID])
+			items[i] = issueItem
+		}
+	}
+
 	// Initialize recipe loader
 	recipeLoader := recipe.NewLoader()
 	_ = recipeLoader.Load() // Load recipes (errors are non-fatal, will just show empty)
@@ -483,6 +533,11 @@ func NewModel(issues []model.Issue, activeRecipe *recipe.Recipe, beadsPath strin
 		countClosed:       cClosed,
 		priorityHints:     priorityHints,
 		showPriorityHints: false, // Off by default, toggle with 'p'
+		triageScores:      triageScores,
+		triageReasons:     triageReasons,
+		unblocksMap:       unblocksMap,
+		quickWinSet:       quickWinSet,
+		blockerSet:        blockerSet,
 		recipeLoader:      recipeLoader,
 		recipePicker:      recipePicker,
 		activeRecipe:      activeRecipe,
@@ -666,6 +721,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cacheHit := cachedAnalyzer.WasCacheHit()
 		m.labelHealthCached = false
 		m.attentionCached = false
+		m.flowMatrixText = ""
 
 		// Rebuild lookup map
 		m.issueMap = make(map[string]*model.Issue, len(newIssues))
@@ -1002,9 +1058,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.attentionCached = true
 				}
 				attText, _ := ComputeAttentionView(m.issues, max(40, m.width-4))
-				m.viewport.SetContent(attText)
-				m.showDetails = true
-				m.focused = focusDetail
+				m.isGraphView = false
+				m.isBoardView = false
+				m.isActionableView = false
+				m.focused = focusInsights
+				m.insightsPanel = NewInsightsModel(analysis.Insights{}, m.issueMap, m.theme)
+				m.insightsPanel.labelAttention = m.attentionCache.Labels
+				m.insightsPanel.extraText = attText
+				panelHeight := m.height - 2
+				if panelHeight < 3 {
+					panelHeight = 3
+				}
+				m.insightsPanel.SetSize(m.width, panelHeight)
+				return m, nil
+
+			case "F":
+				// Flow matrix view (cross-label dependencies)
+				cfg := analysis.DefaultLabelHealthConfig()
+				flow := analysis.ComputeCrossLabelFlow(m.issues, cfg)
+				m.flowMatrixText = FlowMatrixView(flow, max(60, m.width-4))
+				m.isGraphView = false
+				m.isBoardView = false
+				m.isActionableView = false
+				m.focused = focusInsights
+				m.insightsPanel = NewInsightsModel(analysis.Insights{}, m.issueMap, m.theme)
+				m.insightsPanel.labelFlow = &flow
+				m.insightsPanel.extraText = m.flowMatrixText
+				panelHeight := m.height - 2
+				if panelHeight < 3 {
+					panelHeight = 3
+				}
+				m.insightsPanel.SetSize(m.width, panelHeight)
 				return m, nil
 
 			case "R":
@@ -1539,6 +1623,12 @@ func (m Model) handleListKeys(msg tea.KeyMsg) Model {
 		// Toggle history view
 		if !m.isHistoryView {
 			m.enterHistoryView()
+		}
+	case "S":
+		// Apply triage recipe - sort by triage score (bv-151)
+		if r := m.recipeLoader.Get("triage"); r != nil {
+			m.activeRecipe = r
+			m.applyRecipe(r)
 		}
 	}
 	return m
@@ -2260,6 +2350,7 @@ func (m *Model) renderFooter() string {
 		keyHints = append(keyHints, keyStyle.Render("j/k")+" nav", keyStyle.Render("⏎")+" apply", keyStyle.Render("esc")+" cancel")
 	} else if m.focused == focusInsights {
 		keyHints = append(keyHints, keyStyle.Render("h/l")+" panels", keyStyle.Render("e")+" explain", keyStyle.Render("⏎")+" jump", keyStyle.Render("?")+" help")
+		keyHints = append(keyHints, keyStyle.Render("A")+" attention", keyStyle.Render("F")+" flow")
 	} else if m.isGraphView {
 		keyHints = append(keyHints, keyStyle.Render("hjkl")+" nav", keyStyle.Render("H/L")+" scroll", keyStyle.Render("⏎")+" view", keyStyle.Render("g")+" list")
 	} else if m.isBoardView {
@@ -2280,7 +2371,7 @@ func (m *Model) renderFooter() string {
 		} else if m.showDetails {
 			keyHints = append(keyHints, keyStyle.Render("esc")+" back", keyStyle.Render("C")+" copy", keyStyle.Render("O")+" edit", keyStyle.Render("?")+" help")
 		} else {
-			keyHints = append(keyHints, keyStyle.Render("⏎")+" details", keyStyle.Render("t")+" diff", keyStyle.Render("ECO")+" actions", keyStyle.Render("?")+" help")
+			keyHints = append(keyHints, keyStyle.Render("⏎")+" details", keyStyle.Render("t")+" diff", keyStyle.Render("S")+" triage", keyStyle.Render("ECO")+" actions", keyStyle.Render("?")+" help")
 		}
 	}
 
@@ -2377,13 +2468,23 @@ func (m *Model) applyFilter() {
 
 		if include {
 			// Use pre-computed graph scores (avoid redundant calculation)
-			filteredItems = append(filteredItems, IssueItem{
+			item := IssueItem{
 				Issue:      issue,
 				GraphScore: m.analysis.GetPageRankScore(issue.ID),
 				Impact:     m.analysis.GetCriticalPathScore(issue.ID),
 				DiffStatus: m.getDiffStatus(issue.ID),
 				RepoPrefix: ExtractRepoPrefix(issue.ID),
-			})
+			}
+			// Add triage data (bv-151)
+			item.TriageScore = m.triageScores[issue.ID]
+			if reasons, exists := m.triageReasons[issue.ID]; exists {
+				item.TriageReason = reasons.Primary
+				item.TriageReasons = reasons.All
+			}
+			item.IsQuickWin = m.quickWinSet[issue.ID]
+			item.IsBlocker = m.blockerSet[issue.ID]
+			item.UnblocksCount = len(m.unblocksMap[issue.ID])
+			filteredItems = append(filteredItems, item)
 			filteredIssues = append(filteredIssues, issue)
 		}
 	}
@@ -2467,13 +2568,23 @@ func (m *Model) applyRecipe(r *recipe.Recipe) {
 		}
 
 		if include {
-			filteredItems = append(filteredItems, IssueItem{
+			item := IssueItem{
 				Issue:      issue,
 				GraphScore: m.analysis.GetPageRankScore(issue.ID),
 				Impact:     m.analysis.GetCriticalPathScore(issue.ID),
 				DiffStatus: m.getDiffStatus(issue.ID),
 				RepoPrefix: ExtractRepoPrefix(issue.ID),
-			})
+			}
+			// Add triage data (bv-151)
+			item.TriageScore = m.triageScores[issue.ID]
+			if reasons, exists := m.triageReasons[issue.ID]; exists {
+				item.TriageReason = reasons.Primary
+				item.TriageReasons = reasons.All
+			}
+			item.IsQuickWin = m.quickWinSet[issue.ID]
+			item.IsBlocker = m.blockerSet[issue.ID]
+			item.UnblocksCount = len(m.unblocksMap[issue.ID])
+			filteredItems = append(filteredItems, item)
 			filteredIssues = append(filteredIssues, issue)
 		}
 	}
@@ -2497,6 +2608,8 @@ func (m *Model) applyRecipe(r *recipe.Recipe) {
 				less = iItem.Impact < jItem.Impact
 			case "pagerank":
 				less = iItem.GraphScore < jItem.GraphScore
+			case "triage":
+				less = iItem.TriageScore < jItem.TriageScore
 			default:
 				less = iItem.Issue.Priority < jItem.Issue.Priority
 			}
@@ -2586,6 +2699,48 @@ func (m *Model) updateViewportContent() {
 	// Labels (bv-f103 fix: display labels in detail view)
 	if len(item.Labels) > 0 {
 		sb.WriteString(fmt.Sprintf("**Labels:** %s\n\n", strings.Join(item.Labels, ", ")))
+	}
+
+	// Triage Insights (bv-151)
+	if issueItem.TriageScore > 0 || issueItem.TriageReason != "" || issueItem.UnblocksCount > 0 || issueItem.IsQuickWin || issueItem.IsBlocker {
+		sb.WriteString("### 🎯 Triage Insights\n")
+
+		// Score with visual indicator
+		scoreIcon := "🔵"
+		if issueItem.TriageScore >= 0.7 {
+			scoreIcon = "🔴"
+		} else if issueItem.TriageScore >= 0.4 {
+			scoreIcon = "🟠"
+		}
+		sb.WriteString(fmt.Sprintf("- **Triage Score:** %s %.2f/1.00\n", scoreIcon, issueItem.TriageScore))
+
+		// Special flags
+		if issueItem.IsQuickWin {
+			sb.WriteString("- **⭐ Quick Win** — Low effort, high impact opportunity\n")
+		}
+		if issueItem.IsBlocker {
+			sb.WriteString("- **🔴 Critical Blocker** — Completing this unblocks significant downstream work\n")
+		}
+
+		// Unblocks count
+		if issueItem.UnblocksCount > 0 {
+			sb.WriteString(fmt.Sprintf("- **🔓 Unblocks:** %d downstream items when completed\n", issueItem.UnblocksCount))
+		}
+
+		// Primary reason
+		if issueItem.TriageReason != "" {
+			sb.WriteString(fmt.Sprintf("- **Primary Reason:** %s\n", issueItem.TriageReason))
+		}
+
+		// All reasons (if multiple)
+		if len(issueItem.TriageReasons) > 1 {
+			sb.WriteString("- **All Reasons:**\n")
+			for _, reason := range issueItem.TriageReasons {
+				sb.WriteString(fmt.Sprintf("  - %s\n", reason))
+			}
+		}
+
+		sb.WriteString("\n")
 	}
 
 	// Graph Analysis (using thread-safe accessors)

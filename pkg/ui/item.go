@@ -38,6 +38,14 @@ type IssueItem struct {
 	Impact     float64
 	DiffStatus DiffStatus // Diff state for time-travel mode
 	RepoPrefix string     // Repository prefix for workspace mode (e.g., "api", "web")
+
+	// Triage insights (bv-151)
+	TriageScore   float64  // Unified triage score (0-1)
+	TriageReason  string   // Primary reason for recommendation
+	TriageReasons []string // All triage reasons
+	IsQuickWin    bool     // True if identified as a quick win
+	IsBlocker     bool     // True if this item blocks significant downstream work
+	UnblocksCount int      // Number of items this unblocks
 }
 
 func (i IssueItem) Title() string {

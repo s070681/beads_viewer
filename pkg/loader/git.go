@@ -84,7 +84,7 @@ func (g *GitLoader) LoadAt(revision string) ([]model.Issue, error) {
 // LoadAtDate loads issues from the state at a specific date/time
 // Uses git rev-list to find the commit at or before the given time
 func (g *GitLoader) LoadAtDate(t time.Time) ([]model.Issue, error) {
-	revision := fmt.Sprintf("HEAD@{%s}", t.Format("2006-01-02 15:04:05"))
+	revision := fmt.Sprintf("HEAD@{%s}", t.Format(time.RFC3339))
 	return g.LoadAt(revision)
 }
 
@@ -149,9 +149,9 @@ type RevisionInfo struct {
 
 // resolveRevision converts any revision specifier to a commit SHA
 func (g *GitLoader) resolveRevision(revision string) (string, error) {
-	// Use --verify to ensure we get a valid object SHA and avoid argument injection
-	// This also handles ambiguity between refs and files
-	cmd := exec.Command("git", "rev-parse", "--verify", revision)
+	// Use --verify to ensure we get a valid object SHA
+	// Use --end-of-options to prevent argument injection (e.g. revision starting with -)
+	cmd := exec.Command("git", "rev-parse", "--verify", "--end-of-options", revision)
 	cmd.Dir = g.repoPath
 
 	out, err := cmd.Output()
@@ -161,7 +161,7 @@ func (g *GitLoader) resolveRevision(revision string) (string, error) {
 
 	// If rev-parse failed, try to interpret the revision as a date.
 	if t, ok := parseDateString(revision); ok {
-		dateSpec := fmt.Sprintf("HEAD@{%s}", t.Format("2006-01-02 15:04:05"))
+		dateSpec := fmt.Sprintf("HEAD@{%s}", t.Format(time.RFC3339))
 		cmd = exec.Command("git", "rev-parse", dateSpec)
 		cmd.Dir = g.repoPath
 		if out, dateErr := cmd.Output(); dateErr == nil {

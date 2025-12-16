@@ -123,9 +123,12 @@ var metricDescriptions = map[MetricPanel]MetricInfo{
 
 // InsightsModel is an interactive insights dashboard
 type InsightsModel struct {
-	insights analysis.Insights
-	issueMap map[string]*model.Issue
-	theme    Theme
+	insights       analysis.Insights
+	issueMap       map[string]*model.Issue
+	theme          Theme
+	extraText      string
+	labelAttention []analysis.LabelAttentionScore
+	labelFlow      *analysis.CrossLabelFlow
 
 	// Navigation state
 	focusedPanel  MetricPanel
@@ -308,6 +311,10 @@ func (m *InsightsModel) SelectedIssueID() string {
 func (m *InsightsModel) View() string {
 	if !m.ready {
 		return ""
+	}
+
+	if m.extraText != "" {
+		return m.theme.Base.Render(m.extraText)
 	}
 
 	t := m.theme

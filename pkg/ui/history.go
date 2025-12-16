@@ -646,15 +646,7 @@ func (h *HistoryModel) renderCommitDetail(commit correlation.CorrelatedCommit, w
 
 // Helper functions
 
-func truncate(s string, maxLen int) string {
-	if maxLen < 4 {
-		maxLen = 4
-	}
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-1] + "…"
-}
+
 
 func methodLabel(method correlation.CorrelationMethod) string {
 	switch method {

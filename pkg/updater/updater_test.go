@@ -233,20 +233,20 @@ func TestRelease_Fields(t *testing.T) {
 
 func TestCompareVersions_AgainstCurrentVersion(t *testing.T) {
 	// These tests ensure that the current app version is properly comparable
-	// Current version is v0.7.0 (from version.go)
-	currentVersion := "v0.7.0"
+	// Current version is v0.10.2 (from version.go)
+	currentVersion := "v0.10.2"
 
 	tests := []struct {
 		name       string
 		newVersion string
 		shouldBe   string // "newer", "older", "same"
 	}{
-		{"patch update", "v0.7.1", "newer"},
-		{"minor update", "v0.8.0", "newer"},
+		{"patch update", "v0.10.3", "newer"},
+		{"minor update", "v0.11.0", "newer"},
 		{"major update", "v1.0.0", "newer"},
-		{"same version", "v0.7.0", "same"},
-		{"older patch", "v0.6.9", "older"},
-		{"older minor", "v0.6.0", "older"},
+		{"same version", "v0.10.2", "same"},
+		{"older patch", "v0.10.1", "older"},
+		{"older minor", "v0.9.0", "older"},
 	}
 
 	for _, tt := range tests {
@@ -284,5 +284,22 @@ func BenchmarkCompareVersions_SemVer(b *testing.B) {
 func BenchmarkCompareVersions_Fallback(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		compareVersions("alpha-1.2.3", "alpha-1.2.4")
+	}
+}
+
+func TestCompareVersions_SemVerNumericIdentifiers(t *testing.T) {
+	// Standard SemVer: identifiers consisting of only digits are compared numerically.
+	// rc.2 < rc.10
+	// Currently, lexicographic comparison makes "rc.10" < "rc.2" (FALSE)
+
+	v1 := "v1.0.0-rc.2"
+	v2 := "v1.0.0-rc.10"
+
+	// Expect v2 > v1 -> returns -1
+	expected := -1
+	got := compareVersions(v1, v2)
+
+	if got != expected {
+		t.Errorf("compareVersions(%q, %q) = %d; want %d (numeric prerelease comparison failure)", v1, v2, got, expected)
 	}
 }

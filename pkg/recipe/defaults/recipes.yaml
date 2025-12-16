@@ -110,24 +110,23 @@ recipes:
         - updated
 
   triage:
-    description: High-priority actionable items for immediate focus
+    description: Issues sorted by computed triage score (high impact + unblocking potential)
     filters:
       status:
         - open
         - in_progress
-      priority:
-        - 0
-        - 1
       actionable: true
     sort:
-      field: priority
-      direction: asc
+      field: triage
+      direction: desc
     view:
       columns:
         - id
         - title
         - priority
-      max_items: 10
+        - triage
+      show_metrics: true
+      max_items: 20
 
   closed:
     description: Recently closed issues
