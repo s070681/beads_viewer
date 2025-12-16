@@ -43,6 +43,8 @@ func main() {
 	robotRecipes := flag.Bool("robot-recipes", false, "Output available recipes as JSON for AI agents")
 	robotLabelHealth := flag.Bool("robot-label-health", false, "Output label health metrics as JSON for AI agents")
 	robotLabelFlow := flag.Bool("robot-label-flow", false, "Output cross-label dependency flow as JSON for AI agents")
+	robotLabelAttention := flag.Bool("robot-label-attention", false, "Output attention-ranked labels as JSON for AI agents")
+	attentionLimit := flag.Int("attention-limit", 5, "Limit number of labels in --robot-label-attention output")
 	robotAlerts := flag.Bool("robot-alerts", false, "Output alerts (drift + proactive) as JSON for AI agents")
 	// Robot output filters (bv-84)
 	robotMinConf := flag.Float64("robot-min-confidence", 0.0, "Filter robot outputs by minimum confidence (0.0-1.0)")
@@ -460,6 +462,91 @@ func main() {
 		encoder.SetIndent("", "  ")
 		if err := encoder.Encode(output); err != nil {
 			fmt.Fprintf(os.Stderr, "Error encoding label flow: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	// Handle --robot-label-attention (bv-121)
+	if *robotLabelAttention {
+		cfg := analysis.DefaultLabelHealthConfig()
+		result := analysis.ComputeLabelAttentionScores(issues, cfg, time.Now().UTC())
+
+		// Apply limit
+		limit := *attentionLimit
+		if limit <= 0 {
+			limit = 5
+		}
+		if limit > len(result.Labels) {
+			limit = len(result.Labels)
+		}
+
+		// Build limited output
+		type AttentionOutput struct {
+			GeneratedAt string `json:"generated_at"`
+			DataHash    string `json:"data_hash"`
+			Limit       int    `json:"limit"`
+			TotalLabels int    `json:"total_labels"`
+			Labels      []struct {
+				Rank            int     `json:"rank"`
+				Label           string  `json:"label"`
+				AttentionScore  float64 `json:"attention_score"`
+				NormalizedScore float64 `json:"normalized_score"`
+				Reason          string  `json:"reason"`
+				OpenCount       int     `json:"open_count"`
+				BlockedCount    int     `json:"blocked_count"`
+				StaleCount      int     `json:"stale_count"`
+				PageRankSum     float64 `json:"pagerank_sum"`
+				VelocityFactor  float64 `json:"velocity_factor"`
+			} `json:"labels"`
+			UsageHints []string `json:"usage_hints"`
+		}
+
+		output := AttentionOutput{
+			GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+			DataHash:    dataHash,
+			Limit:       limit,
+			TotalLabels: result.TotalLabels,
+			UsageHints: []string{
+				"jq '.labels[0]' - top attention label details",
+				"jq '.labels[] | select(.blocked_count > 0)' - labels with blocked issues",
+				"jq '.labels[] | {label:.label,score:.attention_score,reason:.reason}'",
+			},
+		}
+
+		for i := 0; i < limit; i++ {
+			score := result.Labels[i]
+			// Build human-readable reason
+			reason := buildAttentionReason(score)
+			output.Labels = append(output.Labels, struct {
+				Rank            int     `json:"rank"`
+				Label           string  `json:"label"`
+				AttentionScore  float64 `json:"attention_score"`
+				NormalizedScore float64 `json:"normalized_score"`
+				Reason          string  `json:"reason"`
+				OpenCount       int     `json:"open_count"`
+				BlockedCount    int     `json:"blocked_count"`
+				StaleCount      int     `json:"stale_count"`
+				PageRankSum     float64 `json:"pagerank_sum"`
+				VelocityFactor  float64 `json:"velocity_factor"`
+			}{
+				Rank:            score.Rank,
+				Label:           score.Label,
+				AttentionScore:  score.AttentionScore,
+				NormalizedScore: score.NormalizedScore,
+				Reason:          reason,
+				OpenCount:       score.OpenCount,
+				BlockedCount:    score.BlockedCount,
+				StaleCount:      score.StaleCount,
+				PageRankSum:     score.PageRankSum,
+				VelocityFactor:  score.VelocityFactor,
+			})
+		}
+
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		if err := encoder.Encode(output); err != nil {
+			fmt.Fprintf(os.Stderr, "Error encoding label attention: %v\n", err)
 			os.Exit(1)
 		}
 		os.Exit(0)
@@ -2121,4 +2208,36 @@ func buildMetricItems(metrics map[string]float64, limit int) []baseline.MetricIt
 	}
 
 	return items
+}
+
+// buildAttentionReason creates a human-readable reason for attention score
+func buildAttentionReason(score analysis.LabelAttentionScore) string {
+	var parts []string
+
+	// High PageRank
+	if score.PageRankSum > 0.5 {
+		parts = append(parts, "High PageRank")
+	}
+
+	// Blocked issues
+	if score.BlockedCount > 0 {
+		parts = append(parts, fmt.Sprintf("%d blocked", score.BlockedCount))
+	}
+
+	// Stale issues
+	if score.StaleCount > 0 {
+		parts = append(parts, fmt.Sprintf("%d stale", score.StaleCount))
+	}
+
+	// Low velocity
+	if score.VelocityFactor < 1.0 {
+		parts = append(parts, "low velocity")
+	}
+
+	// If no specific reasons, note the open count
+	if len(parts) == 0 {
+		return fmt.Sprintf("%d open issues", score.OpenCount)
+	}
+
+	return strings.Join(parts, ", ")
 }
