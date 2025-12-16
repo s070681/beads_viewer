@@ -459,14 +459,14 @@ type WhatIfDelta struct {
 
 // PriorityRecommendation represents a suggested priority change
 type PriorityRecommendation struct {
-	IssueID           string      `json:"issue_id"`
-	Title             string      `json:"title"`
-	CurrentPriority   int         `json:"current_priority"`
-	SuggestedPriority int         `json:"suggested_priority"`
-	ImpactScore       float64     `json:"impact_score"`
-	Confidence        float64     `json:"confidence"` // 0-1, higher when evidence is strong
-	Reasoning         []string    `json:"reasoning"`  // Human-readable explanations (top 3)
-	Direction         string      `json:"direction"`  // "increase" or "decrease"
+	IssueID           string       `json:"issue_id"`
+	Title             string       `json:"title"`
+	CurrentPriority   int          `json:"current_priority"`
+	SuggestedPriority int          `json:"suggested_priority"`
+	ImpactScore       float64      `json:"impact_score"`
+	Confidence        float64      `json:"confidence"`        // 0-1, higher when evidence is strong
+	Reasoning         []string     `json:"reasoning"`         // Human-readable explanations (top 3)
+	Direction         string       `json:"direction"`         // "increase" or "decrease"
 	WhatIf            *WhatIfDelta `json:"what_if,omitempty"` // Impact of completing this issue
 }
 
@@ -502,6 +502,20 @@ func (a *Analyzer) GenerateRecommendationsWithThresholds(thresholds Recommendati
 		return nil
 	}
 
+	stats := a.Analyze()
+	coreMap := stats.CoreNumber()
+	slackMap := stats.Slack()
+	artSet := make(map[string]bool)
+	for _, id := range stats.ArticulationPoints() {
+		artSet[id] = true
+	}
+	maxCore := 0
+	for _, v := range coreMap {
+		if v > maxCore {
+			maxCore = v
+		}
+	}
+
 	// Compute unblocks for reasoning
 	unblocksMap := make(map[string]int)
 	for _, score := range scores {
@@ -512,7 +526,15 @@ func (a *Analyzer) GenerateRecommendationsWithThresholds(thresholds Recommendati
 	var recommendations []PriorityRecommendation
 
 	for _, score := range scores {
-		rec := generateRecommendation(score, unblocksMap[score.IssueID], thresholds)
+		rec := generateRecommendation(
+			score,
+			unblocksMap[score.IssueID],
+			coreMap[score.IssueID],
+			artSet[score.IssueID],
+			slackMap[score.IssueID],
+			maxCore,
+			thresholds,
+		)
 		if rec != nil {
 			if rec.Confidence >= thresholds.MinConfidence {
 				// Compute what-if delta for this recommendation (bv-83)
@@ -537,7 +559,7 @@ func (a *Analyzer) GenerateRecommendationsWithThresholds(thresholds Recommendati
 }
 
 // generateRecommendation creates a recommendation for a single issue
-func generateRecommendation(score ImpactScore, unblocksCount int, thresholds RecommendationThresholds) *PriorityRecommendation {
+func generateRecommendation(score ImpactScore, unblocksCount int, core int, isArt bool, slack float64, maxCore int, thresholds RecommendationThresholds) *PriorityRecommendation {
 	var reasoning []string
 	var signals int
 	var signalStrength float64
@@ -610,6 +632,28 @@ func generateRecommendation(score ImpactScore, unblocksCount int, thresholds Rec
 		}
 		signals++
 		signalStrength += score.Breakdown.RiskNorm
+	}
+
+	// Structural signals (bv-85)
+	if isArt {
+		reasoning = append(reasoning, "Articulation point (disconnects graph)")
+		signals++
+		signalStrength += 0.35
+	}
+	if maxCore > 0 && core == maxCore {
+		reasoning = append(reasoning, fmt.Sprintf("High cohesion (k-core %d)", core))
+		signals++
+		signalStrength += 0.3
+	}
+	if slack == 0 {
+		reasoning = append(reasoning, "Zero slack on critical chain")
+		signals++
+		signalStrength += 0.25
+	} else if slack > 2 {
+		// Parallel-friendly; softer weight so it doesn't overshadow bottlenecks
+		reasoning = append(reasoning, "Parallel-friendly (slack available)")
+		signals++
+		signalStrength += 0.15
 	}
 
 	// No signals = no recommendation needed

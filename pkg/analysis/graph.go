@@ -40,6 +40,9 @@ type StartupProfile struct {
 	Cycles        time.Duration `json:"cycles"`
 	CyclesTO      bool          `json:"cycles_timeout"`
 	CycleCount    int           `json:"cycle_count"`
+	KCore         time.Duration `json:"kcore"`        // bv-85
+	Articulation  time.Duration `json:"articulation"` // bv-85
+	Slack         time.Duration `json:"slack"`        // bv-85
 	Phase2        time.Duration `json:"phase2_total"`
 
 	// Configuration used
@@ -87,12 +90,15 @@ type GraphStats struct {
 
 // metricStatus captures per-metric computation outcome for transparency.
 type MetricStatus struct {
-	PageRank    statusEntry
-	Betweenness statusEntry
-	Eigenvector statusEntry
-	HITS        statusEntry
-	Critical    statusEntry
-	Cycles      statusEntry
+	PageRank     statusEntry
+	Betweenness  statusEntry
+	Eigenvector  statusEntry
+	HITS         statusEntry
+	Critical     statusEntry
+	Cycles       statusEntry
+	KCore        statusEntry // bv-85: k-core decomposition
+	Articulation statusEntry // bv-85: articulation points (cut vertices)
+	Slack        statusEntry // bv-85: longest-path slack per node
 }
 
 // statusEntry records computation state for a single metric.
@@ -817,9 +823,15 @@ func (a *Analyzer) computePhase2WithProfile(stats *GraphStats, config AnalysisCo
 		profile.Cycles = time.Since(cyclesStart)
 	}
 
-	// Advanced graph signals: k-core, articulation points (undirected), slack
+	// Advanced graph signals: k-core, articulation points (undirected), slack (bv-85)
+	kcoreStart := time.Now()
 	localCore, localArticulation = a.computeCoreAndArticulation()
+	profile.KCore = time.Since(kcoreStart)
+	profile.Articulation = 0 // Computed together with k-core
+
+	slackStart := time.Now()
 	localSlack = a.computeSlack()
+	profile.Slack = time.Since(slackStart)
 
 	// Atomic assignment
 	stats.mu.Lock()
@@ -844,10 +856,13 @@ func (a *Analyzer) computePhase2WithProfile(stats *GraphStats, config AnalysisCo
 			Sample: config.BetweennessSampleSize,
 			MS:     profile.Betweenness,
 		},
-		Eigenvector: statusEntry{State: stateFromTiming(config.ComputeEigenvector, false), MS: profile.Eigenvector},
-		HITS:        statusEntry{State: stateFromTiming(config.ComputeHITS, profile.HITSTO), Reason: config.HITSSkipReason, MS: profile.HITS},
-		Critical:    statusEntry{State: stateFromTiming(config.ComputeCriticalPath, false), MS: profile.CriticalPath},
-		Cycles:      statusEntry{State: stateFromTiming(config.ComputeCycles, profile.CyclesTO), Reason: config.CyclesSkipReason, MS: profile.Cycles},
+		Eigenvector:  statusEntry{State: stateFromTiming(config.ComputeEigenvector, false), MS: profile.Eigenvector},
+		HITS:         statusEntry{State: stateFromTiming(config.ComputeHITS, profile.HITSTO), Reason: config.HITSSkipReason, MS: profile.HITS},
+		Critical:     statusEntry{State: stateFromTiming(config.ComputeCriticalPath, false), MS: profile.CriticalPath},
+		Cycles:       statusEntry{State: stateFromTiming(config.ComputeCycles, profile.CyclesTO), Reason: config.CyclesSkipReason, MS: profile.Cycles},
+		KCore:        statusEntry{State: "computed", MS: profile.KCore},        // bv-85: always computed (fast)
+		Articulation: statusEntry{State: "computed", MS: profile.Articulation}, // bv-85: computed with k-core
+		Slack:        statusEntry{State: "computed", MS: profile.Slack},        // bv-85: always computed (fast)
 	}
 	stats.mu.Unlock()
 	// record status outside lock to avoid holding while computePhase2WithProfile might be extended
@@ -1037,7 +1052,7 @@ func (a *Analyzer) computePhase2(stats *GraphStats, config AnalysisConfig) {
 		}
 	}
 
-	// Advanced graph signals: k-core, articulation points (undirected), slack
+	// Advanced graph signals: k-core, articulation points (undirected), slack (bv-85)
 	localCore, localArticulation = a.computeCoreAndArticulation()
 	localSlack = a.computeSlack()
 
@@ -1054,6 +1069,19 @@ func (a *Analyzer) computePhase2(stats *GraphStats, config AnalysisConfig) {
 	stats.slack = localSlack
 	stats.cycles = localCycles
 	stats.phase2Ready = true
+
+	// Set status for metrics (bv-85: include k-core, articulation, slack)
+	stats.status = MetricStatus{
+		PageRank:     statusEntry{State: stateFromTiming(config.ComputePageRank, false)},
+		Betweenness:  statusEntry{State: stateFromTiming(config.ComputeBetweenness, false)},
+		Eigenvector:  statusEntry{State: stateFromTiming(config.ComputeEigenvector, false)},
+		HITS:         statusEntry{State: stateFromTiming(config.ComputeHITS, false)},
+		Critical:     statusEntry{State: stateFromTiming(config.ComputeCriticalPath, false)},
+		Cycles:       statusEntry{State: stateFromTiming(config.ComputeCycles, false)},
+		KCore:        statusEntry{State: "computed"},
+		Articulation: statusEntry{State: "computed"},
+		Slack:        statusEntry{State: "computed"},
+	}
 	stats.mu.Unlock()
 }
 
@@ -1185,8 +1213,9 @@ func (a *Analyzer) computeSlack() map[string]float64 {
 	return slack
 }
 
-// computeKCore returns core numbers for an undirected graph using a simple degeneracy ordering.
+// computeKCore returns core numbers using iterative k peeling (handles isolated nodes and preserves correct cores).
 func computeKCore(g *simple.UndirectedGraph) map[int64]int {
+	// Build adjacency and degrees
 	deg := make(map[int64]int)
 	adj := make(map[int64][]int64)
 	nodes := g.Nodes()
@@ -1200,32 +1229,51 @@ func computeKCore(g *simple.UndirectedGraph) map[int64]int {
 	}
 
 	core := make(map[int64]int, len(deg))
-	active := make(map[int64]bool, len(deg))
-	for id := range deg {
-		active[id] = true
+	removed := make(map[int64]bool, len(deg))
+
+	maxDeg := 0
+	for _, d := range deg {
+		if d > maxDeg {
+			maxDeg = d
+		}
 	}
 
-	for len(active) > 0 {
-		// pick min-degree active node
-		var pick int64
-		minDeg := math.MaxInt
-		for id, ok := range active {
-			if !ok {
-				continue
-			}
-			if deg[id] < minDeg {
-				minDeg = deg[id]
-				pick = id
+	for k := 1; k <= maxDeg; k++ {
+		queue := make([]int64, 0)
+		for id, d := range deg {
+			if !removed[id] && d < k {
+				queue = append(queue, id)
 			}
 		}
-		core[pick] = minDeg
-		delete(active, pick)
-		for _, nbr := range adj[pick] {
-			if active[nbr] {
+
+		for len(queue) > 0 {
+			v := queue[len(queue)-1]
+			queue = queue[:len(queue)-1]
+			if removed[v] {
+				continue
+			}
+			removed[v] = true
+			// Highest core they failed to meet is k-1
+			core[v] = k - 1
+			for _, nbr := range adj[v] {
+				if removed[nbr] {
+					continue
+				}
 				deg[nbr]--
+				if deg[nbr] < k {
+					queue = append(queue, nbr)
+				}
 			}
 		}
 	}
+
+	// Any nodes never removed get maxDeg
+	for id := range deg {
+		if !removed[id] {
+			core[id] = maxDeg
+		}
+	}
+
 	return core
 }
 

@@ -63,13 +63,16 @@ func TestEnterTimeTravelModeGracefulFailure(t *testing.T) {
 
 func TestInsightsCurrentPanelItemCount(t *testing.T) {
 	ins := analysis.Insights{
-		Bottlenecks: []analysis.InsightItem{{ID: "B"}},
-		Keystones:   []analysis.InsightItem{{ID: "K"}},
-		Influencers: []analysis.InsightItem{{ID: "I"}},
-		Hubs:        []analysis.InsightItem{{ID: "H"}},
-		Authorities: []analysis.InsightItem{{ID: "A"}},
-		Cycles:      [][]string{{"X", "Y"}},
-		Stats:       analysis.NewGraphStatsForTest(nil, nil, nil, nil, nil, nil, nil, nil, nil, 0, nil),
+		Bottlenecks:  []analysis.InsightItem{{ID: "B"}},
+		Keystones:    []analysis.InsightItem{{ID: "K"}},
+		Influencers:  []analysis.InsightItem{{ID: "I"}},
+		Hubs:         []analysis.InsightItem{{ID: "H"}},
+		Authorities:  []analysis.InsightItem{{ID: "A"}},
+		Cores:        []analysis.InsightItem{{ID: "C"}},
+		Articulation: []string{"ART"},
+		Slack:        []analysis.InsightItem{{ID: "S"}},
+		Cycles:       [][]string{{"X", "Y"}},
+		Stats:        analysis.NewGraphStatsForTest(nil, nil, nil, nil, nil, nil, nil, nil, nil, 0, nil),
 	}
 	m := NewInsightsModel(ins, map[string]*model.Issue{}, DefaultTheme(nil))
 	counts := []int{m.currentPanelItemCount()}

@@ -189,8 +189,15 @@ func main() {
 		fmt.Println("      Sources: 'builtin', 'user' (~/.config/bv/recipes.yaml), 'project' (.bv/recipes.yaml)")
 		fmt.Println("")
 		fmt.Println("  --robot-insights")
-		fmt.Println("      Graph metrics JSON for agents. Keys: Bottlenecks, CriticalPath, Cycles, Stats, data_hash, analysis_config, status.")
+		fmt.Println("      Graph metrics JSON for agents.")
+		fmt.Println("      Top lists: Bottlenecks (betweenness), Keystones (critical path), Influencers (eigenvector),")
+		fmt.Println("                 Cores (k-core), Articulation points (cut vertices), Slack (parallelism headroom).")
+		fmt.Println("      Full maps (capped by BV_INSIGHTS_MAP_LIMIT): pagerank, betweenness, eigenvector, hubs/authorities, core_number, slack.")
 		fmt.Println("      status captures per-metric state: computed|approx|timeout|skipped with elapsed_ms and reasons.")
+		fmt.Println("      Shared fields: data_hash, analysis_config.")
+		fmt.Println("      Quick jq: jq '.full_stats.core_number | to_entries | sort_by(-.value)[:5]'   # top k-core nodes")
+		fmt.Println("                 jq '.Articulation'                                                  # structural cut points")
+		fmt.Println("                 jq '.Slack[:5]'                                                     # highest slack (parallel-friendly)")
 		fmt.Println("")
 		fmt.Println("  --robot-plan")
 		fmt.Println("      Execution tracks grouped for parallel work. Includes data_hash, analysis_config, status.")
@@ -675,6 +682,9 @@ func main() {
 				"jq '.CriticalPath[:3]' - Top 3 critical path items",
 				"jq '.top_what_ifs[] | select(.delta.direct_unblocks > 2)' - High-impact items",
 				"jq '.full_stats.pagerank | to_entries | sort_by(-.value)[:5]' - Top PageRank",
+				"jq '.full_stats.core_number | to_entries | sort_by(-.value)[:5]' - Strongly embedded nodes (k-core)",
+				"jq '.full_stats.articulation_points' - Structural cut points",
+				"jq '.Slack[:5]' - Nodes with slack (good parallel work candidates)",
 				"jq '.Cycles | length' - Count of detected cycles",
 				"BV_INSIGHTS_MAP_LIMIT=50 bv --robot-insights - Reduce map sizes",
 			},

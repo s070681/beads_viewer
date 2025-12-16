@@ -30,23 +30,32 @@ func createTestInsights() analysis.Insights {
 		Authorities: []analysis.InsightItem{
 			{ID: "auth-1", Value: 3.2},
 		},
+		Cores: []analysis.InsightItem{
+			{ID: "core-1", Value: 3},
+			{ID: "core-2", Value: 2},
+		},
+		Articulation: []string{"art-1"},
+		Slack: []analysis.InsightItem{
+			{ID: "slack-1", Value: 4},
+			{ID: "slack-2", Value: 2},
+		},
 		Cycles: [][]string{
 			{"cycle-a", "cycle-b", "cycle-c"},
 			{"cycle-x", "cycle-y"},
 		},
 		ClusterDensity: 0.42,
 		Stats: analysis.NewGraphStatsForTest(
-			map[string]float64{"bottleneck-1": 0.15},                     // pageRank
+			map[string]float64{"bottleneck-1": 0.15},                       // pageRank
 			map[string]float64{"bottleneck-1": 0.85, "bottleneck-2": 0.65}, // betweenness
-			map[string]float64{"influencer-1": 0.92},                      // eigenvector
-			map[string]float64{"hub-1": 2.5, "hub-2": 1.8},               // hubs
-			map[string]float64{"auth-1": 3.2},                            // authorities
-			map[string]float64{"keystone-1": 5.0, "keystone-2": 3.0},     // criticalPathScore
-			map[string]int{"bottleneck-1": 2},                            // outDegree
-			map[string]int{"bottleneck-1": 3},                            // inDegree
-			nil,                                                          // cycles
-			0,                                                            // density
-			nil,                                                          // topologicalOrder
+			map[string]float64{"influencer-1": 0.92},                       // eigenvector
+			map[string]float64{"hub-1": 2.5, "hub-2": 1.8},                 // hubs
+			map[string]float64{"auth-1": 3.2},                              // authorities
+			map[string]float64{"keystone-1": 5.0, "keystone-2": 3.0},       // criticalPathScore
+			map[string]int{"bottleneck-1": 2},                              // outDegree
+			map[string]int{"bottleneck-1": 3},                              // inDegree
+			nil,                                                            // cycles
+			0,                                                              // density
+			nil,                                                            // topologicalOrder
 		),
 	}
 }
@@ -70,6 +79,11 @@ func createTestIssueMap() map[string]*model.Issue {
 		{ID: "cycle-c", Title: "Cycle Part C", Status: model.StatusBlocked},
 		{ID: "cycle-x", Title: "Cycle X", Status: model.StatusBlocked},
 		{ID: "cycle-y", Title: "Cycle Y", Status: model.StatusBlocked},
+		{ID: "core-1", Title: "Core Node 1", Status: model.StatusOpen},
+		{ID: "core-2", Title: "Core Node 2", Status: model.StatusOpen},
+		{ID: "art-1", Title: "Articulation", Status: model.StatusOpen},
+		{ID: "slack-1", Title: "Slack Node 1", Status: model.StatusOpen},
+		{ID: "slack-2", Title: "Slack Node 2", Status: model.StatusOpen},
 	}
 
 	issueMap := make(map[string]*model.Issue)
@@ -146,25 +160,32 @@ func TestInsightsModelPanelNavigation(t *testing.T) {
 		t.Errorf("Expected auth-1 after NextPanel, got %s", id)
 	}
 
-	// NextPanel to Cycles - should return first item of first cycle
+	// NextPanel to Cores
 	m.NextPanel()
 	id = m.SelectedIssueID()
-	if id != "cycle-a" {
-		t.Errorf("Expected cycle-a after NextPanel to Cycles, got %s", id)
+	if id != "core-1" {
+		t.Errorf("Expected core-1 after NextPanel, got %s", id)
 	}
 
-	// NextPanel should wrap back to Bottlenecks
+	// NextPanel to Articulation
 	m.NextPanel()
 	id = m.SelectedIssueID()
-	if id != "bottleneck-1" {
-		t.Errorf("Expected bottleneck-1 after wrap, got %s", id)
+	if id != "art-1" {
+		t.Errorf("Expected art-1 after NextPanel, got %s", id)
 	}
 
-	// PrevPanel should go to Cycles
+	// NextPanel to Slack
+	m.NextPanel()
+	id = m.SelectedIssueID()
+	if id != "slack-1" {
+		t.Errorf("Expected slack-1 after NextPanel, got %s", id)
+	}
+
+	// PrevPanel should go back to Articulation
 	m.PrevPanel()
 	id = m.SelectedIssueID()
-	if id != "cycle-a" {
-		t.Errorf("Expected cycle-a after PrevPanel, got %s", id)
+	if id != "art-1" {
+		t.Errorf("Expected art-1 after PrevPanel, got %s", id)
 	}
 }
 
@@ -235,8 +256,8 @@ func TestInsightsModelCyclesPanelNavigation(t *testing.T) {
 	m := ui.NewInsightsModel(ins, issueMap, theme)
 	m.SetSize(120, 40)
 
-	// Navigate to Cycles panel (5 NextPanels from start)
-	for i := 0; i < 5; i++ {
+	// Navigate to Cycles panel (8 NextPanels from start)
+	for i := 0; i < 8; i++ {
 		m.NextPanel()
 	}
 

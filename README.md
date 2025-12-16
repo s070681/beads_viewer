@@ -1574,7 +1574,7 @@ SOFTWARE.
 - `status`: per-metric state `computed|approx|timeout|skipped` with elapsed ms/reason; always check before trusting heavy metrics like PageRank/Betweenness/HITS.
 
 **Schemas in 5 seconds (jq-friendly)**
-- `bv --robot-insights` → `.status`, `.analysis_config`, metric maps (capped by `BV_INSIGHTS_MAP_LIMIT`), `Bottlenecks`, `CriticalPath`, `Cycles`.
+- `bv --robot-insights` → `.status`, `.analysis_config`, metric maps (capped by `BV_INSIGHTS_MAP_LIMIT`), `Bottlenecks`, `CriticalPath`, `Cycles`, plus advanced signals: `Cores` (k-core), `Articulation` (cut vertices), `Slack` (longest-path slack).
 - `bv --robot-plan` → `.plan.tracks[].items[].{id,unblocks}` for downstream unlocks; `.plan.summary.highest_impact`.
 - `bv --robot-priority` → `.recommendations[].{id,current_priority,suggested_priority,confidence,reasoning}`.
 - `bv --robot-diff --diff-since <ref>` → `{from_data_hash,to_data_hash,diff.summary,diff.new_issues,diff.cycle_*}`.
@@ -1590,6 +1590,11 @@ bv --robot-plan | jq '.plan.tracks[].items[] | {id, unblocks}'
 
 # High-confidence priority fixes
 bv --robot-priority | jq '.recommendations[] | select(.confidence > 0.6)'
+
+# Structural strength and parallelism
+bv --robot-insights | jq '.full_stats.core_number | to_entries | sort_by(-.value)[:5]'
+bv --robot-insights | jq '.Articulation'
+bv --robot-insights | jq '.Slack[:5]'
 
 # Verify diff hashes match expectations
 bv --robot-diff --diff-since HEAD~1 | jq '{from: .from_data_hash, to: .to_data_hash}'

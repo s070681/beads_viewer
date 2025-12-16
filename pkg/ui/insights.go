@@ -19,6 +19,9 @@ const (
 	PanelInfluencers
 	PanelHubs
 	PanelAuthorities
+	PanelCores
+	PanelArticulation
+	PanelSlack
 	PanelCycles
 	PanelCount // Sentinel for wrapping
 )
@@ -79,6 +82,33 @@ var metricDescriptions = map[MetricPanel]MetricInfo{
 		WhyUseful:   "Authorities are foundational services/components that many features need.",
 		HowToUse:    "Stabilize these early. Breaking an authority breaks many dependent hubs.",
 		FormulaHint: "Auth(v) = Σ Hub(u) for all u where u→v",
+	},
+	PanelCores: {
+		Icon:        "🧠",
+		Title:       "Cores",
+		ShortDesc:   "k-core Cohesion",
+		WhatIs:      "Highest k-core numbers (nodes embedded in dense subgraphs).",
+		WhyUseful:   "High-core nodes sit in tightly knit clusters—changing them can ripple locally.",
+		HowToUse:    "Use for resilience checks; prioritize when breaking apart tightly coupled areas.",
+		FormulaHint: "Max k such that node remains in k-core after peeling",
+	},
+	PanelArticulation: {
+		Icon:        "🪢",
+		Title:       "Cut Points",
+		ShortDesc:   "Articulation Vertices",
+		WhatIs:      "Nodes whose removal disconnects the undirected graph.",
+		WhyUseful:   "Single points of failure. Instability here can isolate workstreams.",
+		HowToUse:    "Harden or split these nodes; avoid piling more dependencies onto them.",
+		FormulaHint: "Tarjan articulation detection on undirected view",
+	},
+	PanelSlack: {
+		Icon:        "⏳",
+		Title:       "Slack",
+		ShortDesc:   "Longest-path slack",
+		WhatIs:      "Distance from the critical chain (0 = on critical path; higher = parallel-friendly).",
+		WhyUseful:   "Zero-slack tasks are schedule-critical; high-slack tasks can fill gaps without blocking.",
+		HowToUse:    "Schedule zero-slack tasks early; slot high-slack tasks when waiting on blockers.",
+		FormulaHint: "Slack(v) = max_path_len - dist_start(v) - dist_end(v)",
 	},
 	PanelCycles: {
 		Icon:        "🔄",
@@ -213,6 +243,12 @@ func (m *InsightsModel) currentPanelItemCount() int {
 		return len(m.insights.Hubs)
 	case PanelAuthorities:
 		return len(m.insights.Authorities)
+	case PanelCores:
+		return len(m.insights.Cores)
+	case PanelArticulation:
+		return len(m.insights.Articulation)
+	case PanelSlack:
+		return len(m.insights.Slack)
 	case PanelCycles:
 		return len(m.insights.Cycles)
 	default:
@@ -233,6 +269,16 @@ func (m *InsightsModel) getPanelItems(panel MetricPanel) []analysis.InsightItem 
 		return m.insights.Hubs
 	case PanelAuthorities:
 		return m.insights.Authorities
+	case PanelCores:
+		return m.insights.Cores
+	case PanelArticulation:
+		items := make([]analysis.InsightItem, 0, len(m.insights.Articulation))
+		for _, id := range m.insights.Articulation {
+			items = append(items, analysis.InsightItem{ID: id, Value: 0})
+		}
+		return items
+	case PanelSlack:
+		return m.insights.Slack
 	default:
 		return nil
 	}
@@ -274,31 +320,34 @@ func (m *InsightsModel) View() string {
 		mainWidth = m.width - detailWidth - 1
 	}
 
-	// 3-column layout for panels
+	// 3-column layout; now 3 rows to accommodate new panels
 	colWidth := (mainWidth - 6) / 3
 	if colWidth < 25 {
 		colWidth = 25
 	}
 
-	rowHeight := (m.height - 4) / 2
+	rowHeight := (m.height - 6) / 3
 	if rowHeight < 8 {
 		rowHeight = 8
 	}
 
-	// Render each panel
-	panels := make([]string, 6)
-	panels[0] = m.renderMetricPanel(PanelBottlenecks, colWidth, rowHeight, t)
-	panels[1] = m.renderMetricPanel(PanelKeystones, colWidth, rowHeight, t)
-	panels[2] = m.renderMetricPanel(PanelInfluencers, colWidth, rowHeight, t)
-	panels[3] = m.renderMetricPanel(PanelHubs, colWidth, rowHeight, t)
-	panels[4] = m.renderMetricPanel(PanelAuthorities, colWidth, rowHeight, t)
-	panels[5] = m.renderCyclesPanel(colWidth, rowHeight, t)
+	panels := []string{
+		m.renderMetricPanel(PanelBottlenecks, colWidth, rowHeight, t),
+		m.renderMetricPanel(PanelKeystones, colWidth, rowHeight, t),
+		m.renderMetricPanel(PanelInfluencers, colWidth, rowHeight, t),
+		m.renderMetricPanel(PanelHubs, colWidth, rowHeight, t),
+		m.renderMetricPanel(PanelAuthorities, colWidth, rowHeight, t),
+		m.renderMetricPanel(PanelCores, colWidth, rowHeight, t),
+		m.renderMetricPanel(PanelArticulation, colWidth, rowHeight, t),
+		m.renderMetricPanel(PanelSlack, colWidth, rowHeight, t),
+		m.renderCyclesPanel(colWidth, rowHeight, t),
+	}
 
-	// Arrange in 2 rows of 3
-	topRow := lipgloss.JoinHorizontal(lipgloss.Top, panels[0], panels[1], panels[2])
-	btmRow := lipgloss.JoinHorizontal(lipgloss.Top, panels[3], panels[4], panels[5])
+	row1 := lipgloss.JoinHorizontal(lipgloss.Top, panels[0], panels[1], panels[2])
+	row2 := lipgloss.JoinHorizontal(lipgloss.Top, panels[3], panels[4], panels[5])
+	row3 := lipgloss.JoinHorizontal(lipgloss.Top, panels[6], panels[7], panels[8])
 
-	mainContent := lipgloss.JoinVertical(lipgloss.Left, topRow, btmRow)
+	mainContent := lipgloss.JoinVertical(lipgloss.Left, row1, row2, row3)
 
 	// Add detail panel if enabled
 	if detailWidth > 0 {
