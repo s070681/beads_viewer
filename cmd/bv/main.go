@@ -4138,193 +4138,246 @@ func copyDir(src, dst string) error {
 }
 
 // generateREADME creates a README.md file for the GitHub Pages repository.
-// It includes project description and headline statistics from the export data.
-func generateREADME(bundlePath, title string, issues []model.Issue, triage *analysis.TriageResult, stats *analysis.GraphStats) error {
+// It includes actionable insights, graph analysis, and a direct link to the live site.
+func generateREADME(bundlePath, title, pagesURL string, issues []model.Issue, triage *analysis.TriageResult, stats *analysis.GraphStats) error {
 	var b strings.Builder
 
-	// Title and description
+	// Title
 	if title == "" {
-		title = "Beads Viewer"
+		title = "Project Dashboard"
 	}
 	b.WriteString(fmt.Sprintf("# %s\n\n", title))
-	b.WriteString("Interactive issue tracker visualization powered by [beads](https://github.com/steveyegge/beads).\n\n")
-	b.WriteString("🔗 **To view the interactive site:** Open this repository's GitHub Pages URL (found in Settings → Pages), or open `index.html` locally.\n\n")
 
-	// Generation timestamp
-	b.WriteString(fmt.Sprintf("*Last updated: %s*\n\n", time.Now().Format("January 2, 2006 at 3:04 PM MST")))
+	// Prominent live link - THE MOST IMPORTANT THING
+	if pagesURL != "" {
+		b.WriteString(fmt.Sprintf("## 🔗 [View Live Dashboard](%s)\n\n", pagesURL))
+	}
 
-	// Project Health Summary
-	b.WriteString("## 📊 Project Health\n\n")
-
+	// Executive summary - not boring counts, but actionable intelligence
 	if triage != nil {
 		health := triage.ProjectHealth.Counts
-		b.WriteString("### Issue Counts\n\n")
-		b.WriteString("| Metric | Count |\n")
-		b.WriteString("|--------|-------|\n")
-		b.WriteString(fmt.Sprintf("| **Total Issues** | %d |\n", health.Total))
-		b.WriteString(fmt.Sprintf("| Open | %d |\n", health.Open))
-		b.WriteString(fmt.Sprintf("| Closed | %d |\n", health.Closed))
-		b.WriteString(fmt.Sprintf("| Blocked | %d |\n", health.Blocked))
-		b.WriteString(fmt.Sprintf("| Actionable | %d |\n", health.Actionable))
 
-		// Completion rate
+		// Quick status line
+		completionPct := float64(0)
 		if health.Total > 0 {
-			completionRate := float64(health.Closed) / float64(health.Total) * 100
-			b.WriteString(fmt.Sprintf("| **Completion Rate** | %.1f%% |\n", completionRate))
-		}
-		b.WriteString("\n")
-
-		// By Status breakdown
-		if len(health.ByStatus) > 0 {
-			b.WriteString("### Status Breakdown\n\n")
-			b.WriteString("| Status | Count |\n")
-			b.WriteString("|--------|-------|\n")
-			// Sort for consistent output
-			statuses := make([]string, 0, len(health.ByStatus))
-			for s := range health.ByStatus {
-				statuses = append(statuses, s)
-			}
-			sort.Strings(statuses)
-			for _, s := range statuses {
-				b.WriteString(fmt.Sprintf("| %s | %d |\n", s, health.ByStatus[s]))
-			}
-			b.WriteString("\n")
+			completionPct = float64(health.Closed) / float64(health.Total) * 100
 		}
 
-		// By Type breakdown
-		if len(health.ByType) > 0 {
-			b.WriteString("### Issue Types\n\n")
-			b.WriteString("| Type | Count |\n")
-			b.WriteString("|------|-------|\n")
-			types := make([]string, 0, len(health.ByType))
-			for t := range health.ByType {
-				types = append(types, t)
-			}
-			sort.Strings(types)
-			for _, t := range types {
-				b.WriteString(fmt.Sprintf("| %s | %d |\n", t, health.ByType[t]))
-			}
-			b.WriteString("\n")
-		}
+		b.WriteString("## 📊 Executive Summary\n\n")
+		b.WriteString(fmt.Sprintf("**%d** total issues | **%.0f%%** complete | **%d** ready to work | **%d** blocked\n\n",
+			health.Total, completionPct, health.Actionable, health.Blocked))
 
-		// By Priority breakdown
-		if len(health.ByPriority) > 0 {
-			b.WriteString("### Priority Distribution\n\n")
-			b.WriteString("| Priority | Count |\n")
-			b.WriteString("|----------|-------|\n")
-			priorities := make([]int, 0, len(health.ByPriority))
-			for p := range health.ByPriority {
-				priorities = append(priorities, p)
+		// Health assessment
+		if health.Blocked > 0 && health.Actionable > 0 {
+			blockRatio := float64(health.Blocked) / float64(health.Actionable)
+			if blockRatio > 1.0 {
+				b.WriteString("⚠️ **Health Warning:** More issues are blocked than actionable. Focus on clearing blockers.\n\n")
 			}
-			sort.Ints(priorities)
-			for _, p := range priorities {
-				label := fmt.Sprintf("P%d", p)
-				switch p {
-				case 0:
-					label = "P0 (Critical)"
-				case 1:
-					label = "P1 (High)"
-				case 2:
-					label = "P2 (Medium)"
-				case 3:
-					label = "P3 (Low)"
-				case 4:
-					label = "P4 (Backlog)"
+		}
+	}
+
+	// TOP RECOMMENDATIONS - the actual useful content
+	if triage != nil && len(triage.QuickRef.TopPicks) > 0 {
+		b.WriteString("## 🎯 Top Priorities\n\n")
+		b.WriteString("The graph analysis identified these as the highest-impact items to work on:\n\n")
+
+		for i, pick := range triage.QuickRef.TopPicks {
+			b.WriteString(fmt.Sprintf("### %d. %s\n", i+1, pick.Title))
+			b.WriteString(fmt.Sprintf("**ID:** `%s` | **Impact Score:** %.2f", pick.ID, pick.Score))
+			if pick.Unblocks > 0 {
+				b.WriteString(fmt.Sprintf(" | **Unblocks:** %d issues", pick.Unblocks))
+			}
+			b.WriteString("\n\n")
+
+			if len(pick.Reasons) > 0 {
+				b.WriteString("**Why this matters:**\n")
+				for _, reason := range pick.Reasons {
+					b.WriteString(fmt.Sprintf("- %s\n", reason))
 				}
-				b.WriteString(fmt.Sprintf("| %s | %d |\n", label, health.ByPriority[p]))
+				b.WriteString("\n")
 			}
-			b.WriteString("\n")
 		}
 	}
 
-	// Graph metrics
-	if stats != nil && stats.NodeCount > 0 {
-		b.WriteString("### Dependency Graph\n\n")
-		b.WriteString("| Metric | Value |\n")
-		b.WriteString("|--------|-------|\n")
-		b.WriteString(fmt.Sprintf("| Nodes | %d |\n", stats.NodeCount))
-		b.WriteString(fmt.Sprintf("| Edges | %d |\n", stats.EdgeCount))
-		if stats.Density > 0 {
-			b.WriteString(fmt.Sprintf("| Density | %.4f |\n", stats.Density))
+	// CRITICAL BLOCKERS - what's holding everything up
+	if triage != nil && len(triage.BlockersToClear) > 0 {
+		b.WriteString("## 🚧 Critical Bottlenecks\n\n")
+		b.WriteString("These issues are blocking the most downstream work. Clearing them has outsized impact:\n\n")
+
+		maxBlockers := 5
+		if len(triage.BlockersToClear) < maxBlockers {
+			maxBlockers = len(triage.BlockersToClear)
 		}
-		if len(stats.Cycles()) > 0 {
-			b.WriteString(fmt.Sprintf("| Cycles Detected | %d |\n", len(stats.Cycles())))
+
+		b.WriteString("| Issue | Title | Unblocks | Status |\n")
+		b.WriteString("|-------|-------|----------|--------|\n")
+		for i := 0; i < maxBlockers; i++ {
+			blocker := triage.BlockersToClear[i]
+			status := "Ready"
+			if !blocker.Actionable {
+				status = fmt.Sprintf("Blocked by %d", len(blocker.BlockedBy))
+			}
+			b.WriteString(fmt.Sprintf("| `%s` | %s | **%d** issues | %s |\n",
+				blocker.ID, truncateTitle(blocker.Title, 40), blocker.UnblocksCount, status))
+		}
+		if len(triage.BlockersToClear) > 5 {
+			b.WriteString(fmt.Sprintf("\n*+%d more bottlenecks in the dashboard*\n", len(triage.BlockersToClear)-5))
 		}
 		b.WriteString("\n")
 	}
 
-	// Quick wins and blockers summary
-	if triage != nil {
-		if len(triage.QuickWins) > 0 {
-			b.WriteString("### 🎯 Quick Wins\n\n")
-			b.WriteString("Issues that can be resolved quickly with high impact:\n\n")
-			maxWins := 5
-			if len(triage.QuickWins) < maxWins {
-				maxWins = len(triage.QuickWins)
+	// CYCLES - these are BUGS in the project structure!
+	if stats != nil && len(stats.Cycles()) > 0 {
+		b.WriteString("## 🔴 Dependency Cycles Detected!\n\n")
+		b.WriteString("**These are structural bugs** that make completion impossible. Fix immediately:\n\n")
+
+		maxCycles := 3
+		cycles := stats.Cycles()
+		if len(cycles) < maxCycles {
+			maxCycles = len(cycles)
+		}
+		for i := 0; i < maxCycles; i++ {
+			cycle := cycles[i]
+			b.WriteString(fmt.Sprintf("- `%s`\n", strings.Join(cycle, "` → `")))
+		}
+		if len(cycles) > 3 {
+			b.WriteString(fmt.Sprintf("\n*+%d more cycles - see dashboard for details*\n", len(cycles)-3))
+		}
+		b.WriteString("\n")
+	}
+
+	// ALERTS - important warnings
+	if triage != nil && len(triage.Alerts) > 0 {
+		hasCritical := false
+		hasWarning := false
+		for _, alert := range triage.Alerts {
+			if alert.Severity == "critical" {
+				hasCritical = true
+			} else if alert.Severity == "warning" {
+				hasWarning = true
 			}
-			for i := 0; i < maxWins; i++ {
-				qw := triage.QuickWins[i]
-				b.WriteString(fmt.Sprintf("- **%s**: %s\n", qw.ID, qw.Title))
-			}
-			if len(triage.QuickWins) > 5 {
-				b.WriteString(fmt.Sprintf("\n*...and %d more quick wins*\n", len(triage.QuickWins)-5))
-			}
-			b.WriteString("\n")
 		}
 
-		if len(triage.BlockersToClear) > 0 {
-			b.WriteString("### 🚧 Critical Blockers\n\n")
-			b.WriteString("Issues blocking the most downstream work:\n\n")
-			maxBlockers := 5
-			if len(triage.BlockersToClear) < maxBlockers {
-				maxBlockers = len(triage.BlockersToClear)
-			}
-			for i := 0; i < maxBlockers; i++ {
-				blocker := triage.BlockersToClear[i]
-				b.WriteString(fmt.Sprintf("- **%s**: %s (unblocks %d issues)\n", blocker.ID, blocker.Title, blocker.UnblocksCount))
-			}
-			if len(triage.BlockersToClear) > 5 {
-				b.WriteString(fmt.Sprintf("\n*...and %d more blockers*\n", len(triage.BlockersToClear)-5))
-			}
-			b.WriteString("\n")
-		}
-
-		// Alerts
-		if len(triage.Alerts) > 0 {
-			b.WriteString("### ⚠️ Alerts\n\n")
+		if hasCritical || hasWarning {
+			b.WriteString("## ⚠️ Alerts\n\n")
 			for _, alert := range triage.Alerts {
-				icon := "ℹ️"
-				switch alert.Severity {
-				case "critical":
-					icon = "🔴"
-				case "warning":
-					icon = "🟡"
-				case "info":
-					icon = "🔵"
+				if alert.Severity == "critical" || alert.Severity == "warning" {
+					icon := "🟡"
+					if alert.Severity == "critical" {
+						icon = "🔴"
+					}
+					b.WriteString(fmt.Sprintf("- %s **%s**: %s\n", icon, alert.Type, alert.Message))
 				}
-				b.WriteString(fmt.Sprintf("- %s **%s**: %s\n", icon, alert.Type, alert.Message))
 			}
 			b.WriteString("\n")
 		}
 	}
 
-	// Features section
-	b.WriteString("## ✨ Features\n\n")
-	b.WriteString("This viewer provides:\n\n")
-	b.WriteString("- 📋 **List View** - Browse and filter all issues\n")
-	b.WriteString("- 🔗 **Dependency Graph** - Visualize issue relationships\n")
-	b.WriteString("- 📊 **Charts** - Priority, status, and type distributions\n")
-	b.WriteString("- 🔍 **Search** - Full-text search across issues\n")
-	b.WriteString("- ⏱️ **Time Travel** - See project state at any point in history\n")
-	b.WriteString("- 📱 **Responsive** - Works on desktop and mobile\n\n")
+	// GRAPH ANALYSIS INSIGHTS - what the analysis tells us
+	if stats != nil && stats.NodeCount > 0 {
+		b.WriteString("## 📈 Graph Analysis\n\n")
 
-	// Footer
+		// Density interpretation
+		densityHealth := "🟢 Healthy"
+		densityDesc := "Issues are well-isolated and can be parallelized"
+		if stats.Density > 0.15 {
+			densityHealth = "🔴 High Coupling"
+			densityDesc = "Many inter-dependencies; changes cascade widely"
+		} else if stats.Density > 0.05 {
+			densityHealth = "🟡 Moderate"
+			densityDesc = "Normal coupling for a complex project"
+		}
+
+		b.WriteString(fmt.Sprintf("- **Dependency Density:** %.3f (%s) — %s\n", stats.Density, densityHealth, densityDesc))
+		b.WriteString(fmt.Sprintf("- **Graph Size:** %d issues with %d dependencies\n", stats.NodeCount, stats.EdgeCount))
+
+		if len(stats.Cycles()) > 0 {
+			b.WriteString(fmt.Sprintf("- **Cycles:** %d circular dependencies detected (must fix!)\n", len(stats.Cycles())))
+		} else if stats.EdgeCount > 0 {
+			b.WriteString("- **Cycles:** None detected ✓\n")
+		}
+		b.WriteString("\n")
+	}
+
+	// QUICK WINS - low effort, high impact
+	if triage != nil && len(triage.QuickWins) > 0 {
+		b.WriteString("## 🏃 Quick Wins\n\n")
+		b.WriteString("Low-effort items that clear the path forward:\n\n")
+
+		maxWins := 5
+		if len(triage.QuickWins) < maxWins {
+			maxWins = len(triage.QuickWins)
+		}
+		for i := 0; i < maxWins; i++ {
+			qw := triage.QuickWins[i]
+			unblockText := ""
+			if len(qw.UnblocksIDs) > 0 {
+				unblockText = fmt.Sprintf(" (unblocks %d)", len(qw.UnblocksIDs))
+			}
+			b.WriteString(fmt.Sprintf("- **%s**: %s%s\n", qw.ID, qw.Title, unblockText))
+			if qw.Reason != "" {
+				b.WriteString(fmt.Sprintf("  - *%s*\n", qw.Reason))
+			}
+		}
+		if len(triage.QuickWins) > 5 {
+			b.WriteString(fmt.Sprintf("\n*+%d more quick wins in the dashboard*\n", len(triage.QuickWins)-5))
+		}
+		b.WriteString("\n")
+	}
+
+	// SUMMARY STATS - compact reference at the end
+	if triage != nil {
+		health := triage.ProjectHealth.Counts
+		b.WriteString("## 📋 Status Summary\n\n")
+
+		// Priority breakdown inline
+		if len(health.ByPriority) > 0 {
+			var prioItems []string
+			priorities := []int{0, 1, 2, 3, 4}
+			for _, p := range priorities {
+				if count, ok := health.ByPriority[p]; ok && count > 0 {
+					prioItems = append(prioItems, fmt.Sprintf("P%d: %d", p, count))
+				}
+			}
+			if len(prioItems) > 0 {
+				b.WriteString(fmt.Sprintf("**By Priority:** %s\n\n", strings.Join(prioItems, " | ")))
+			}
+		}
+
+		// Type breakdown inline
+		if len(health.ByType) > 0 {
+			var typeItems []string
+			for t, count := range health.ByType {
+				if count > 0 {
+					typeItems = append(typeItems, fmt.Sprintf("%s: %d", t, count))
+				}
+			}
+			if len(typeItems) > 0 {
+				sort.Strings(typeItems)
+				b.WriteString(fmt.Sprintf("**By Type:** %s\n\n", strings.Join(typeItems, " | ")))
+			}
+		}
+	}
+
+	// Footer with timestamp and links
 	b.WriteString("---\n\n")
-	b.WriteString("*Generated by [bv](https://github.com/jeffreymanuel/beads) - the beads viewer CLI*\n")
+	b.WriteString(fmt.Sprintf("*Generated %s by [bv](https://github.com/Dicklesworthstone/beads_viewer)*\n\n", time.Now().Format("Jan 2, 2006 at 3:04 PM MST")))
+
+	if pagesURL != "" {
+		b.WriteString(fmt.Sprintf("**[Open Interactive Dashboard](%s)** for full details, dependency graph, search, and time-travel.\n", pagesURL))
+	}
 
 	// Write to file
 	readmePath := filepath.Join(bundlePath, "README.md")
 	return os.WriteFile(readmePath, []byte(b.String()), 0644)
+}
+
+// truncateTitle truncates a title to maxLen characters, adding ellipsis if needed
+func truncateTitle(title string, maxLen int) string {
+	if len(title) <= maxLen {
+		return title
+	}
+	return title[:maxLen-3] + "..."
 }
 
 // runPreviewServer starts a local HTTP server to preview the static site.
@@ -4488,7 +4541,19 @@ func runPagesWizard(issues []model.Issue, beadsPath string) error {
 	// Generate README.md with project stats (for GitHub Pages)
 	if config.DeployTarget == "github" {
 		fmt.Println("  -> Generating README.md...")
-		if err := generateREADME(bundlePath, config.Title, exportIssues, &triage, stats); err != nil {
+		// Compute the GitHub Pages URL from username and repo name
+		pagesURL := ""
+		if ghStatus, err := export.CheckGHStatus(); err == nil && ghStatus.Authenticated && ghStatus.Username != "" {
+			repoName := config.RepoName
+			// Handle repo names that already include owner
+			if strings.Contains(repoName, "/") {
+				parts := strings.Split(repoName, "/")
+				pagesURL = fmt.Sprintf("https://%s.github.io/%s/", parts[0], parts[1])
+			} else {
+				pagesURL = fmt.Sprintf("https://%s.github.io/%s/", ghStatus.Username, repoName)
+			}
+		}
+		if err := generateREADME(bundlePath, config.Title, pagesURL, exportIssues, &triage, stats); err != nil {
 			fmt.Printf("  -> Warning: failed to generate README: %v\n", err)
 		}
 	}
