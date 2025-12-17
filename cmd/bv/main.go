@@ -4147,8 +4147,8 @@ func generateREADME(bundlePath, title string, issues []model.Issue, triage *anal
 		title = "Beads Viewer"
 	}
 	b.WriteString(fmt.Sprintf("# %s\n\n", title))
-	b.WriteString("Interactive issue tracker visualization powered by [beads](https://github.com/jeffreymanuel/beads).\n\n")
-	b.WriteString("🔗 **[View the live site](.)** (opens in GitHub Pages)\n\n")
+	b.WriteString("Interactive issue tracker visualization powered by [beads](https://github.com/steveyegge/beads).\n\n")
+	b.WriteString("🔗 **To view the interactive site:** Open this repository's GitHub Pages URL (found in Settings → Pages), or open `index.html` locally.\n\n")
 
 	// Generation timestamp
 	b.WriteString(fmt.Sprintf("*Last updated: %s*\n\n", time.Now().Format("January 2, 2006 at 3:04 PM MST")))
