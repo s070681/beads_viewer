@@ -10,11 +10,14 @@
  * License: MIT
  */
 
-const CACHE_NAME = 'beads-viewer-coi-v1';
+const CACHE_NAME = 'beads-viewer-coi-v2';
 
 // Headers needed for cross-origin isolation
+// Using 'credentialless' instead of 'require-corp' to allow CDN resources
+// while still enabling SharedArrayBuffer for sql.js WASM performance.
+// 'credentialless' allows cross-origin resources without credentials (cookies).
 const COI_HEADERS = {
-  'Cross-Origin-Embedder-Policy': 'require-corp',
+  'Cross-Origin-Embedder-Policy': 'credentialless',
   'Cross-Origin-Opener-Policy': 'same-origin',
 };
 

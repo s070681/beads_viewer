@@ -4006,6 +4006,7 @@ func copyViewerAssets(outputDir, title string) error {
 		"viewer.js",
 		"styles.css",
 		"graph.js",
+		"charts.js",
 		"coi-serviceworker.js",
 	}
 
