@@ -268,8 +268,8 @@ func TestSemanticSearchFilterWithValidSetup(t *testing.T) {
 
 	ss.SetIDs([]string{"id-1", "id-2", "id-3"})
 
-	targets := []string{"fix bug", "add feature", "update docs"}
-	ranks := ss.Filter("search query", targets)
+	// Use ComputeSemanticResults for synchronous computation (testing)
+	ranks := ss.ComputeSemanticResults("search query")
 
 	// Should return ranked results
 	if len(ranks) == 0 {
@@ -306,8 +306,8 @@ func TestSemanticSearchFilterSortsByScore(t *testing.T) {
 
 	ss.SetIDs([]string{"id-a", "id-b", "id-c"})
 
-	targets := []string{"a", "b", "c"}
-	ranks := ss.Filter("query", targets)
+	// Use ComputeSemanticResults for synchronous computation (testing)
+	ranks := ss.ComputeSemanticResults("query")
 
 	if len(ranks) < 3 {
 		t.Fatalf("Expected at least 3 ranks, got %d", len(ranks))
@@ -376,8 +376,8 @@ func TestSemanticSearchFilterMissingID(t *testing.T) {
 
 	ss.SetIDs([]string{"id-1", "id-missing"})
 
-	targets := []string{"a", "b"}
-	ranks := ss.Filter("query", targets)
+	// Use ComputeSemanticResults for synchronous computation (testing)
+	ranks := ss.ComputeSemanticResults("query")
 
 	// Should return results for both valid and missing IDs
 	// Missing IDs are assigned a low score but included
@@ -417,6 +417,104 @@ func TestSemanticSearchFilterEmbedError(t *testing.T) {
 }
 
 // =============================================================================
+// Non-blocking Filter Tests (async pattern)
+// =============================================================================
+
+func TestSemanticSearchFilterNonBlocking(t *testing.T) {
+	ss := NewSemanticSearch()
+
+	idx := search.NewVectorIndex(3)
+	embedder := &mockEmbedder{
+		dim: 3,
+		embedFunc: func(ctx context.Context, texts []string) ([][]float32, error) {
+			result := make([][]float32, len(texts))
+			for i := range result {
+				result[i] = []float32{1.0, 0.0, 0.0}
+			}
+			return result, nil
+		},
+	}
+
+	ss.SetIndex(idx, embedder)
+	idx.Upsert("id-1", search.ContentHash{}, []float32{1.0, 0.0, 0.0})
+	idx.Upsert("id-2", search.ContentHash{}, []float32{0.0, 1.0, 0.0})
+	ss.SetIDs([]string{"id-1", "id-2"})
+
+	targets := []string{"a", "b"}
+
+	// First call to Filter should return fuzzy results (non-blocking)
+	// and mark the term as pending
+	ranks := ss.Filter("query", targets)
+
+	// Should get fuzzy results immediately (list.DefaultFilter behavior)
+	// The exact result depends on DefaultFilter, but it should be non-empty
+	if len(ranks) == 0 {
+		// DefaultFilter with non-matching term returns empty, which is fine
+	}
+
+	// Should have a pending term
+	pendingTerm := ss.GetPendingTerm()
+	if pendingTerm != "query" {
+		t.Errorf("Expected pending term 'query', got %q", pendingTerm)
+	}
+
+	// Now simulate async computation completing
+	results := ss.ComputeSemanticResults("query")
+	ss.SetCachedResults("query", results)
+
+	// Pending should be cleared
+	if ss.GetPendingTerm() != "" {
+		t.Errorf("Expected pending term to be cleared, got %q", ss.GetPendingTerm())
+	}
+
+	// Second call to Filter should return cached semantic results
+	ranks2 := ss.Filter("query", targets)
+	if len(ranks2) != 2 {
+		t.Errorf("Expected 2 cached ranks, got %d", len(ranks2))
+	}
+}
+
+func TestSemanticSearchCacheManagement(t *testing.T) {
+	ss := NewSemanticSearch()
+
+	idx := search.NewVectorIndex(3)
+	embedder := &mockEmbedder{
+		dim: 3,
+		embedFunc: func(ctx context.Context, texts []string) ([][]float32, error) {
+			result := make([][]float32, len(texts))
+			for i := range result {
+				result[i] = []float32{1.0, 0.0, 0.0}
+			}
+			return result, nil
+		},
+	}
+
+	ss.SetIndex(idx, embedder)
+	idx.Upsert("id-1", search.ContentHash{}, []float32{1.0, 0.0, 0.0})
+	ss.SetIDs([]string{"id-1"})
+
+	// Test SetCachedResults
+	results := ss.ComputeSemanticResults("test")
+	ss.SetCachedResults("test", results)
+
+	// Check that results are cached
+	targets := []string{"a"}
+	cachedRanks := ss.Filter("test", targets)
+	if len(cachedRanks) != 1 {
+		t.Errorf("Expected 1 cached rank, got %d", len(cachedRanks))
+	}
+
+	// Test ClearPending
+	ss.Filter("new query", targets) // Mark as pending
+	if ss.GetPendingTerm() != "new query" {
+		t.Errorf("Expected pending term 'new query', got %q", ss.GetPendingTerm())
+	}
+	ss.ClearPending()
+	if ss.GetPendingTerm() != "" {
+		t.Errorf("Expected pending term to be cleared, got %q", ss.GetPendingTerm())
+	}
+}
+
 // dotFloat32 Tests
 // =============================================================================
 

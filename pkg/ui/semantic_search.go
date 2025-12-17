@@ -22,14 +22,80 @@ type semanticSearchSnapshot struct {
 	IDs      []string
 }
 
+// semanticResultCache holds cached filter results and pending state
+type semanticResultCache struct {
+	results     map[string][]list.Rank // term -> ranks
+	pendingTerm string                 // term awaiting async computation
+	lastQuery   time.Time              // for debounce
+}
+
 type SemanticSearch struct {
 	snapshot atomic.Value // semanticSearchSnapshot
+	cache    atomic.Value // *semanticResultCache
 }
 
 func NewSemanticSearch() *SemanticSearch {
 	s := &SemanticSearch{}
 	s.snapshot.Store(semanticSearchSnapshot{})
+	s.cache.Store(&semanticResultCache{results: make(map[string][]list.Rank)})
 	return s
+}
+
+func (s *SemanticSearch) getCache() *semanticResultCache {
+	v := s.cache.Load()
+	if v == nil {
+		return &semanticResultCache{results: make(map[string][]list.Rank)}
+	}
+	return v.(*semanticResultCache)
+}
+
+// GetPendingTerm returns the term awaiting async semantic computation, if any
+func (s *SemanticSearch) GetPendingTerm() string {
+	return s.getCache().pendingTerm
+}
+
+// GetLastQueryTime returns when the last filter query was made (for debouncing)
+func (s *SemanticSearch) GetLastQueryTime() time.Time {
+	return s.getCache().lastQuery
+}
+
+// SetCachedResults stores semantic filter results and clears pending state
+func (s *SemanticSearch) SetCachedResults(term string, results []list.Rank) {
+	c := s.getCache()
+	newCache := &semanticResultCache{
+		results:     make(map[string][]list.Rank),
+		pendingTerm: "",
+		lastQuery:   c.lastQuery,
+	}
+	// Copy existing cache entries (keep a small LRU-like cache)
+	for k, v := range c.results {
+		newCache.results[k] = v
+	}
+	// Limit cache size to prevent memory bloat
+	if len(newCache.results) > 20 {
+		// Clear old entries (simple approach: clear all)
+		newCache.results = make(map[string][]list.Rank)
+	}
+	newCache.results[term] = results
+	// Clear pending if this was the pending term
+	if c.pendingTerm == term {
+		newCache.pendingTerm = ""
+	}
+	s.cache.Store(newCache)
+}
+
+// ClearPending clears the pending term (e.g., when user stops filtering)
+func (s *SemanticSearch) ClearPending() {
+	c := s.getCache()
+	if c.pendingTerm == "" {
+		return
+	}
+	newCache := &semanticResultCache{
+		results:     c.results,
+		pendingTerm: "",
+		lastQuery:   c.lastQuery,
+	}
+	s.cache.Store(newCache)
 }
 
 func (s *SemanticSearch) Snapshot() semanticSearchSnapshot {
@@ -57,7 +123,8 @@ func (s *SemanticSearch) SetIDs(ids []string) {
 }
 
 // Filter implements list.FilterFunc, returning ranks sorted by semantic similarity.
-// When the semantic index isn't ready it falls back to list.DefaultFilter.
+// This is non-blocking: returns cached results or fuzzy fallback immediately,
+// and marks the term as pending for async computation.
 func (s *SemanticSearch) Filter(term string, targets []string) []list.Rank {
 	if term == "" {
 		// Preserve existing sort order when the user hasn't entered a query yet.
@@ -73,12 +140,39 @@ func (s *SemanticSearch) Filter(term string, targets []string) []list.Rank {
 		return list.DefaultFilter(term, targets)
 	}
 
+	// Check cache first - return immediately if we have cached results
+	c := s.getCache()
+	if cached, ok := c.results[term]; ok {
+		return cached
+	}
+
+	// No cached results - mark as pending and return fuzzy results
+	// The async computation will be triggered by the model
+	newCache := &semanticResultCache{
+		results:     c.results,
+		pendingTerm: term,
+		lastQuery:   time.Now(),
+	}
+	s.cache.Store(newCache)
+
+	// Return fuzzy results immediately so UI stays responsive
+	return list.DefaultFilter(term, targets)
+}
+
+// ComputeSemanticResults computes semantic similarity results synchronously.
+// This should be called from an async tea.Cmd, not from Filter.
+func (s *SemanticSearch) ComputeSemanticResults(term string) []list.Rank {
+	snap := s.Snapshot()
+	if !snap.Ready || snap.Index == nil || snap.Embedder == nil {
+		return nil
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
 	vecs, err := snap.Embedder.Embed(ctx, []string{term})
 	if err != nil || len(vecs) != 1 {
-		return list.DefaultFilter(term, targets)
+		return nil
 	}
 	q := vecs[0]
 
@@ -131,6 +225,23 @@ type SemanticIndexReadyMsg struct {
 	Loaded    bool
 	Stats     search.IndexSyncStats
 	Error     error
+}
+
+// SemanticFilterResultMsg is emitted when async semantic filter results are ready.
+type SemanticFilterResultMsg struct {
+	Term    string
+	Results []list.Rank
+}
+
+// ComputeSemanticFilterCmd computes semantic filter results asynchronously.
+func ComputeSemanticFilterCmd(s *SemanticSearch, term string) tea.Cmd {
+	return func() tea.Msg {
+		results := s.ComputeSemanticResults(term)
+		return SemanticFilterResultMsg{
+			Term:    term,
+			Results: results,
+		}
+	}
 }
 
 // BuildSemanticIndexCmd builds or updates the semantic index for the given issues.
