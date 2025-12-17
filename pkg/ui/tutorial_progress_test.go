@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestTutorialProgressPath(t *testing.T) {
@@ -315,5 +317,149 @@ func TestTutorialProgress_JSONSerialization(t *testing.T) {
 	}
 	if !loaded.CompletedOnce {
 		t.Error("Expected completed once")
+	}
+}
+
+// Tests for TutorialModel integration methods (bv-j4og)
+
+func TestTutorialModel_SaveProgress(t *testing.T) {
+	// Create temp directory for testing
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	// Reset singleton for test isolation
+	progressManager = nil
+	progressManagerOnce = sync.Once{}
+
+	// Create tutorial model
+	theme := Theme{Renderer: lipgloss.DefaultRenderer()}
+	m := NewTutorialModel(theme)
+
+	// Navigate to a page (page 1)
+	m.NextPage()
+
+	// Save progress
+	if err := m.SaveProgress(); err != nil {
+		t.Fatalf("SaveProgress failed: %v", err)
+	}
+
+	// Verify file was created
+	configPath := filepath.Join(tmpDir, ".config", "bv", "tutorial-progress.json")
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		t.Fatal("Progress file was not created")
+	}
+
+	// Verify persisted data
+	pm := GetTutorialProgressManager()
+	if !pm.IsPageViewed(m.pages[1].ID) {
+		t.Error("Expected current page to be marked as viewed")
+	}
+}
+
+func TestTutorialModel_LoadProgress(t *testing.T) {
+	// Create temp directory for testing
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	// Reset singleton
+	progressManager = nil
+	progressManagerOnce = sync.Once{}
+
+	// Pre-populate progress file
+	pm := GetTutorialProgressManager()
+	pm.MarkPageViewed("intro-welcome")
+	pm.MarkPageViewed("intro-philosophy")
+	if err := pm.Save(); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	// Reset singleton to simulate fresh start
+	progressManager = nil
+	progressManagerOnce = sync.Once{}
+
+	// Create new tutorial model and load progress
+	theme := Theme{Renderer: lipgloss.DefaultRenderer()}
+	m := NewTutorialModel(theme)
+	m.LoadProgress()
+
+	// Verify progress was loaded
+	if !m.progress["intro-welcome"] {
+		t.Error("Expected intro-welcome to be loaded into model progress")
+	}
+	if !m.progress["intro-philosophy"] {
+		t.Error("Expected intro-philosophy to be loaded into model progress")
+	}
+}
+
+func TestTutorialModel_HasViewedPage(t *testing.T) {
+	// Create temp directory for testing
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	// Reset singleton
+	progressManager = nil
+	progressManagerOnce = sync.Once{}
+
+	theme := Theme{Renderer: lipgloss.DefaultRenderer()}
+	m := NewTutorialModel(theme)
+
+	// Not viewed initially
+	if m.HasViewedPage("intro-welcome") {
+		t.Error("Expected intro-welcome to not be viewed initially")
+	}
+
+	// Mark as viewed in local progress
+	m.progress["intro-welcome"] = true
+	if !m.HasViewedPage("intro-welcome") {
+		t.Error("Expected intro-welcome to be viewed after local mark")
+	}
+
+	// Check persisted state
+	pm := GetTutorialProgressManager()
+	pm.MarkPageViewed("intro-philosophy")
+
+	if !m.HasViewedPage("intro-philosophy") {
+		t.Error("Expected intro-philosophy to be viewed from persisted state")
+	}
+}
+
+func TestGetTutorialProgressManager_Singleton(t *testing.T) {
+	// Reset singleton
+	progressManager = nil
+	progressManagerOnce = sync.Once{}
+
+	pm1 := GetTutorialProgressManager()
+	pm2 := GetTutorialProgressManager()
+
+	if pm1 != pm2 {
+		t.Error("GetTutorialProgressManager should return the same instance")
+	}
+}
+
+func TestTutorialModel_SaveProgress_AllViewed(t *testing.T) {
+	// Create temp directory for testing
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	// Reset singleton
+	progressManager = nil
+	progressManagerOnce = sync.Once{}
+
+	theme := Theme{Renderer: lipgloss.DefaultRenderer()}
+	m := NewTutorialModel(theme)
+
+	// Mark all pages as viewed
+	pm := GetTutorialProgressManager()
+	for _, page := range m.pages {
+		pm.MarkPageViewed(page.ID)
+	}
+
+	// Save progress - should set completed
+	if err := m.SaveProgress(); err != nil {
+		t.Fatalf("SaveProgress failed: %v", err)
+	}
+
+	if !pm.HasCompletedOnce() {
+		t.Error("Expected tutorial to be marked as completed when all pages viewed")
 	}
 }

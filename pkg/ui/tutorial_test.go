@@ -181,11 +181,26 @@ func TestTutorialJumpMethods(t *testing.T) {
 		t.Error("JumpToPage with too-large index should not change page")
 	}
 
-	// JumpToSection
-	m.JumpToSection("navigation")
+	// JumpToSection by section name
+	m.JumpToSection("Core Concepts")
 	if m.currentPage == 3 {
-		// Should have moved to navigation page
+		t.Error("JumpToSection('Core Concepts') should have changed page")
 	}
+
+	// JumpToSection by exact page ID
+	initialPage := m.currentPage
+	m.JumpToSection("intro-welcome")
+	if m.currentPage != 0 {
+		t.Errorf("JumpToSection('intro-welcome') should go to page 0, got %d", m.currentPage)
+	}
+
+	// JumpToSection with non-existent section (should not change)
+	m.currentPage = 5
+	m.JumpToSection("nonexistent-section")
+	if m.currentPage != 5 {
+		t.Error("JumpToSection with invalid section should not change page")
+	}
+	_ = initialPage // silence unused warning
 }
 
 func TestTutorialContextFiltering(t *testing.T) {
