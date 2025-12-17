@@ -144,11 +144,18 @@ func LoadIssues(repoPath string) ([]model.Issue, error) {
 	return LoadIssuesFromFile(jsonlPath)
 }
 
+// DefaultMaxBufferSize is the default buffer size for the scanner (10MB).
+const DefaultMaxBufferSize = 1024 * 1024 * 10
+
 // ParseOptions configures the behavior of ParseIssues.
 type ParseOptions struct {
 	// WarningHandler is called with warning messages (e.g., malformed JSON).
 	// If nil, warnings are printed to os.Stderr.
 	WarningHandler func(string)
+
+	// BufferSize sets the maximum token size for the scanner.
+	// If 0, uses DefaultMaxBufferSize (10MB).
+	BufferSize int
 }
 
 // LoadIssuesFromFileWithOptions reads issues from a file with custom options.
@@ -181,12 +188,14 @@ func ParseIssues(r io.Reader) ([]model.Issue, error) {
 // ParseIssuesWithOptions parses JSONL content with custom options.
 func ParseIssuesWithOptions(r io.Reader, opts ParseOptions) ([]model.Issue, error) {
 	var issues []model.Issue
-	scanner := bufio.NewScanner(r)
-	// Increase buffer size for large lines (issues can be large)
-	const maxCapacity = 1024 * 1024 * 10 // 10MB
-	// Start with 64KB buffer, grow up to maxCapacity
-	buf := make([]byte, 64*1024)
-	scanner.Buffer(buf, maxCapacity)
+
+	// Determine buffer size
+	maxCapacity := opts.BufferSize
+	if maxCapacity <= 0 {
+		maxCapacity = DefaultMaxBufferSize
+	}
+
+	reader := bufio.NewReaderSize(r, maxCapacity)
 
 	// Default warning handler prints to stderr
 	warn := opts.WarningHandler
@@ -197,9 +206,34 @@ func ParseIssuesWithOptions(r io.Reader, opts ParseOptions) ([]model.Issue, erro
 	}
 
 	lineNum := 0
-	for scanner.Scan() {
+	for {
 		lineNum++
-		line := scanner.Bytes()
+		// ReadLine returns a single line, not including the end-of-line bytes.
+		// If the line was too long for the buffer then isPrefix is set and the
+		// beginning of the line is returned.
+		line, isPrefix, err := reader.ReadLine()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, fmt.Errorf("error reading issues stream at line %d: %w", lineNum, err)
+		}
+
+		if isPrefix {
+			// Line too long. Discard the rest of the line.
+			warn(fmt.Sprintf("skipping line %d: line too long (exceeds %d bytes)", lineNum, maxCapacity))
+			for isPrefix {
+				_, isPrefix, err = reader.ReadLine()
+				if err != nil && err != io.EOF {
+					return nil, fmt.Errorf("error skipping long line at line %d: %w", lineNum, err)
+				}
+				if err == io.EOF {
+					break
+				}
+			}
+			continue
+		}
+
 		if len(line) == 0 {
 			continue
 		}
@@ -224,10 +258,6 @@ func ParseIssuesWithOptions(r io.Reader, opts ParseOptions) ([]model.Issue, erro
 		}
 
 		issues = append(issues, issue)
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading issues stream at line %d: %w", lineNum, err)
 	}
 
 	return issues, nil

@@ -1010,6 +1010,9 @@ func main() {
 					Timestamp:    time.Now(),
 				}
 				pagesExecutor = hooks.NewExecutor(hookLoader.Config(), ctx)
+				pagesExecutor.SetLogger(func(msg string) {
+					fmt.Printf("  → %s\n", msg)
+				})
 
 				if err := pagesExecutor.RunPreExport(); err != nil {
 					fmt.Fprintf(os.Stderr, "Error: pre-export hook failed: %v\n", err)

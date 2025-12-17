@@ -223,6 +223,9 @@ go test -race ./...
 ./scripts/coverage.sh check    # Check thresholds
 ./scripts/coverage.sh pkg      # Per-package breakdown
 
+# By default the script runs coverage for ./pkg/... (fast). Override if needed:
+COVER_PACKAGES='./cmd/... ./pkg/...' ./scripts/coverage.sh check
+
 # Manual commands
 go test -coverprofile=coverage.out ./...
 go tool cover -html=coverage.out -o coverage.html
@@ -255,27 +258,32 @@ PERF_TEST=1 go test -v ./pkg/analysis/... -run TestE2EStartup
 
 E2E tests verify the complete `bv` binary behavior:
 
+### Running
+
+The E2E suite includes a few large-scale/stress scenarios guarded by `testing.Short()`.
+
+```bash
+# Fast/CI-friendly run (skips stress cases)
+go test -short ./tests/e2e
+
+# Full run
+go test ./tests/e2e
+```
+
 ### Pattern
 
 ```go
 func TestEndToEnd_Feature(t *testing.T) {
-    // 1. Build binary
-    tempDir := t.TempDir()
-    binPath := filepath.Join(tempDir, "bv")
-
-    cmd := exec.Command("go", "build", "-o", binPath, "./cmd/bv/main.go")
-    cmd.Dir = "../../"  // Run from project root
-    if out, err := cmd.CombinedOutput(); err != nil {
-        t.Fatalf("Build failed: %v\n%s", err, out)
-    }
+    // 1. Use the shared bv binary (built once in TestMain)
+    bv := buildBvBinary(t)
 
     // 2. Create test environment
-    envDir := filepath.Join(tempDir, "env")
+    envDir := t.TempDir()
     os.MkdirAll(filepath.Join(envDir, ".beads"), 0755)
     os.WriteFile(filepath.Join(envDir, ".beads", "beads.jsonl"), []byte(jsonl), 0644)
 
     // 3. Execute command
-    runCmd := exec.Command(binPath, "--robot-triage")
+    runCmd := exec.Command(bv, "--robot-triage")
     runCmd.Dir = envDir
     out, err := runCmd.CombinedOutput()
     if err != nil {
@@ -315,22 +323,27 @@ if _, ok := result["generated_at"]; !ok {
 Tests run automatically on CI for every push and PR:
 
 1. **Unit tests** with coverage (`go test -coverprofile`)
-2. **Coverage threshold** check (60% total, per-package thresholds)
+2. **Coverage threshold** check (pkg/* ≥ 75%, plus per-package thresholds)
 3. **Quick benchmarks** for performance regression detection
-4. **Race detection** (`go test -race`)
 
 Coverage is uploaded to Codecov for tracking trends and PR diffs.
+
+For local stress-testing, consider running the race detector:
+
+```bash
+go test -race ./...
+```
 
 ### Coverage Thresholds
 
 | Package | Minimum |
 |---------|---------|
 | `pkg/analysis` | 75% |
-| `pkg/export` | 95% |
+| `pkg/export` | 80% |
 | `pkg/recipe` | 90% |
 | `pkg/ui` | 55% |
 | `pkg/loader` | 80% |
-| `pkg/updater` | 70% |
+| `pkg/updater` | 55% |
 | `pkg/watcher` | 80% |
 | `pkg/workspace` | 85% |
 

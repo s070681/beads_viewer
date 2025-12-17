@@ -9,18 +9,6 @@ import (
 	"testing"
 )
 
-// buildBvBinary builds the bv binary into a temp directory and returns the path.
-func buildBvBinary(t *testing.T) string {
-	t.Helper()
-	binPath := filepath.Join(t.TempDir(), "bv")
-	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/bv")
-	cmd.Dir = "../../"
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build bv failed: %v\n%s", err, out)
-	}
-	return binPath
-}
-
 // initGitRepo creates a git repo with an initial beads commit and a follow-up change.
 // It returns the repository directory and the hash of the first commit (HEAD~1).
 func initGitRepo(t *testing.T) (string, string) {

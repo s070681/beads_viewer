@@ -187,12 +187,10 @@ func insertBefore(slice []string, marker, value string) []string {
 // parseGitLogOutput parses the combined commit info and diff output from a stream
 func (e *Extractor) parseGitLogOutput(r io.Reader, filterBeadID string) ([]BeadEvent, error) {
 	var events []BeadEvent
-	scanner := bufio.NewScanner(r)
 
-	// Increase buffer size to handle long lines in diffs
-	const maxScanTokenSize = 10 * 1024 * 1024 // 10MB (match loader/stream limits)
-	buf := make([]byte, 64*1024)
-	scanner.Buffer(buf, maxScanTokenSize)
+	// Use bufio.Reader instead of Scanner to handle long lines
+	const maxScanTokenSize = 10 * 1024 * 1024 // 10MB
+	reader := bufio.NewReaderSize(r, maxScanTokenSize)
 
 	var currentCommit *commitInfo
 	var diffBuffer bytes.Buffer
@@ -210,8 +208,33 @@ func (e *Extractor) parseGitLogOutput(r io.Reader, filterBeadID string) ([]BeadE
 		diffBuffer.Reset()
 	}
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	for {
+		// ReadLine returns a single line, not including the end-of-line bytes.
+		lineBytes, isPrefix, err := reader.ReadLine()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
+
+		if isPrefix {
+			// Line too long. Skip it.
+			// Consume until newline or EOF
+			for isPrefix {
+				_, isPrefix, err = reader.ReadLine()
+				if err != nil && err != io.EOF {
+					return nil, err
+				}
+				if err == io.EOF {
+					break
+				}
+			}
+			// Skip processing this line as it's incomplete/truncated
+			continue
+		}
+
+		line := string(lineBytes)
 
 		// Check for commit header
 		if commitPattern.MatchString(line) {
@@ -221,9 +244,8 @@ func (e *Extractor) parseGitLogOutput(r io.Reader, filterBeadID string) ([]BeadE
 			// Parse new header
 			info, err := parseCommitInfo(line)
 			if err != nil {
-				// Log warning? For now just skip malformed headers but treat as diff content if not a header
-				// But regex matched, so it should be parseable unless fields are missing
-				// If parsing fails, treat as diff content (fallback)
+				// Treat as diff content if parsing fails but regex matched
+				// (Shouldn't happen with our regex, but safe fallback)
 				diffBuffer.WriteString(line)
 				diffBuffer.WriteByte('\n')
 				continue
@@ -241,10 +263,6 @@ func (e *Extractor) parseGitLogOutput(r io.Reader, filterBeadID string) ([]BeadE
 
 	// Process final commit
 	processCommit()
-
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
 
 	return events, nil
 }

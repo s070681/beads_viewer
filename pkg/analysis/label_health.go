@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Dicklesworthstone/beads_viewer/pkg/model"
-	"gonum.org/v1/gonum/graph/network"
 	"gonum.org/v1/gonum/graph/simple"
 	"gonum.org/v1/gonum/graph/topo"
 )
@@ -1564,8 +1563,8 @@ func ComputeLabelPageRank(sg LabelSubgraph) LabelPageRankResult {
 		}
 	}
 
-	// Run PageRank (damping 0.85, tolerance 1e-6)
-	pr := network.PageRank(g, 0.85, 1e-6)
+	// Run deterministic PageRank (damping 0.85, tolerance 1e-6)
+	pr := computePageRank(g, 0.85, 1e-6)
 
 	// Convert to string IDs and find min/max
 	var maxScore, minScore float64

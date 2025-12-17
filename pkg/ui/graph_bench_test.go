@@ -129,6 +129,65 @@ func BenchmarkGraphModel_View_Narrow_Layered1000(b *testing.B) {
 	runtime.KeepAlive(out)
 }
 
+func BenchmarkGraphModel_Rebuild_Layered5000(b *testing.B) {
+	issues, insights, theme := prepareGraphBench(50, 100)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var g ui.GraphModel
+	for i := 0; i < b.N; i++ {
+		g = ui.NewGraphModel(issues, insights, theme)
+	}
+	runtime.KeepAlive(g)
+}
+
+func BenchmarkGraphModel_Rebuild_Layered10000(b *testing.B) {
+	issues, insights, theme := prepareGraphBench(100, 100)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var g ui.GraphModel
+	for i := 0; i < b.N; i++ {
+		g = ui.NewGraphModel(issues, insights, theme)
+	}
+	runtime.KeepAlive(g)
+}
+
+func BenchmarkGraphModel_View_Wide_Layered5000(b *testing.B) {
+	issues, insights, theme := prepareGraphBench(50, 100)
+	g := ui.NewGraphModel(issues, insights, theme)
+	for i := 0; i < g.TotalCount()/2; i++ {
+		g.MoveDown()
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var out string
+	for i := 0; i < b.N; i++ {
+		out = g.View(140, 40)
+	}
+	runtime.KeepAlive(out)
+}
+
+func BenchmarkGraphModel_View_Wide_Layered10000(b *testing.B) {
+	issues, insights, theme := prepareGraphBench(100, 100)
+	g := ui.NewGraphModel(issues, insights, theme)
+	for i := 0; i < g.TotalCount()/2; i++ {
+		g.MoveDown()
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var out string
+	for i := 0; i < b.N; i++ {
+		out = g.View(140, 40)
+	}
+	runtime.KeepAlive(out)
+}
 func BenchmarkGraphModel_View_Wide_Layered1000(b *testing.B) {
 	issues, insights, theme := prepareGraphBench(20, 50)
 	g := ui.NewGraphModel(issues, insights, theme)

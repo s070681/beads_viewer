@@ -7,9 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
-	"sort"
 )
 
 // HookResult contains the result of a hook execution
@@ -28,6 +28,7 @@ type Executor struct {
 	config  *Config
 	context ExportContext
 	results []HookResult
+	logger  func(string)
 }
 
 // NewExecutor creates a new hook executor
@@ -36,7 +37,17 @@ func NewExecutor(config *Config, ctx ExportContext) *Executor {
 		config:  config,
 		context: ctx,
 		results: make([]HookResult, 0),
+		logger:  func(string) {}, // No-op default
 	}
+}
+
+// SetLogger sets the logger function for hook execution details
+func (e *Executor) SetLogger(logger func(string)) {
+	if logger == nil {
+		e.logger = func(string) {}
+		return
+	}
+	e.logger = logger
 }
 
 // RunPreExport executes all pre-export hooks
@@ -47,6 +58,7 @@ func (e *Executor) RunPreExport() error {
 	}
 
 	for _, hook := range e.config.Hooks.PreExport {
+		e.logger(fmt.Sprintf("Running pre-export hook %q: %s", hook.Name, hook.Command))
 		result := e.runHook(hook, PreExport)
 		e.results = append(e.results, result)
 
@@ -67,6 +79,7 @@ func (e *Executor) RunPostExport() error {
 
 	var firstError error
 	for _, hook := range e.config.Hooks.PostExport {
+		e.logger(fmt.Sprintf("Running post-export hook %q: %s", hook.Name, hook.Command))
 		result := e.runHook(hook, PostExport)
 		e.results = append(e.results, result)
 

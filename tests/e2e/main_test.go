@@ -9,16 +9,8 @@ import (
 )
 
 func TestEndToEndBuildAndRun(t *testing.T) {
-	// 1. Build the binary
+	binPath := buildBvBinary(t)
 	tempDir := t.TempDir()
-	binPath := filepath.Join(tempDir, "bv")
-
-	// Go up to root
-	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/bv/main.go")
-	cmd.Dir = "../../" // Run from project root
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("Build failed: %v\n%s", err, out)
-	}
 
 	// 2. Prepare a fake environment with .beads/beads.jsonl (canonical filename)
 	envDir := filepath.Join(tempDir, "env")
@@ -40,15 +32,8 @@ func TestEndToEndBuildAndRun(t *testing.T) {
 }
 
 func TestEndToEndRobotPlan(t *testing.T) {
-	// 1. Build the binary
+	binPath := buildBvBinary(t)
 	tempDir := t.TempDir()
-	binPath := filepath.Join(tempDir, "bv")
-
-	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/bv/main.go")
-	cmd.Dir = "../../"
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("Build failed: %v\n%s", err, out)
-	}
 
 	// 2. Create environment with dependency chain
 	envDir := filepath.Join(tempDir, "env")
@@ -109,15 +94,8 @@ func TestEndToEndRobotPlan(t *testing.T) {
 }
 
 func TestEndToEndRobotInsights(t *testing.T) {
-	// 1. Build the binary
+	binPath := buildBvBinary(t)
 	tempDir := t.TempDir()
-	binPath := filepath.Join(tempDir, "bv")
-
-	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/bv/main.go")
-	cmd.Dir = "../../"
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("Build failed: %v\n%s", err, out)
-	}
 
 	// 2. Create environment
 	envDir := filepath.Join(tempDir, "env")
@@ -154,15 +132,8 @@ func TestEndToEndRobotInsights(t *testing.T) {
 }
 
 func TestEndToEndRobotPriority(t *testing.T) {
-	// 1. Build the binary
+	binPath := buildBvBinary(t)
 	tempDir := t.TempDir()
-	binPath := filepath.Join(tempDir, "bv")
-
-	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/bv/main.go")
-	cmd.Dir = "../../"
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("Build failed: %v\n%s", err, out)
-	}
 
 	// 2. Create environment
 	envDir := filepath.Join(tempDir, "env")
@@ -198,15 +169,8 @@ func TestEndToEndRobotPriority(t *testing.T) {
 }
 
 func TestEndToEndRobotRecipes(t *testing.T) {
-	// 1. Build the binary
+	binPath := buildBvBinary(t)
 	tempDir := t.TempDir()
-	binPath := filepath.Join(tempDir, "bv")
-
-	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/bv/main.go")
-	cmd.Dir = "../../"
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("Build failed: %v\n%s", err, out)
-	}
 
 	// 2. Create environment (doesn't need beads file strictly, but loader checks)
 	envDir := filepath.Join(tempDir, "env")

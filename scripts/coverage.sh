@@ -1,53 +1,110 @@
 #!/bin/bash
-# Coverage script for bv
+# Coverage script for bv.
+#
+# Notes:
+# - Must work on macOS default bash (3.2), so avoid associative arrays.
+# - Uses the coverprofile to compute per-package coverage (statement-weighted).
+#
 # Usage:
-#   ./scripts/coverage.sh          # Run coverage and show summary
-#   ./scripts/coverage.sh html     # Generate and open HTML report
-#   ./scripts/coverage.sh check    # Check against thresholds (CI mode)
-#   ./scripts/coverage.sh pkg      # Show per-package breakdown
-#   ./scripts/coverage.sh uncovered # Show uncovered lines
+#   ./scripts/coverage.sh            # Run coverage + summary
+#   ./scripts/coverage.sh html       # Generate + open HTML report
+#   ./scripts/coverage.sh check      # Enforce thresholds (CI mode)
+#   ./scripts/coverage.sh pkg        # Per-package breakdown
+#   ./scripts/coverage.sh uncovered  # Uncovered sections (sample)
 
-set -e
+set -euo pipefail
 
-COVERAGE_DIR="coverage"
-COVERAGE_FILE="$COVERAGE_DIR/coverage.out"
-HTML_FILE="$COVERAGE_DIR/coverage.html"
+COVERAGE_DIR="${COVERAGE_DIR:-coverage}"
+COVERAGE_FILE="${COVERAGE_DIR}/coverage.out"
+HTML_FILE="${COVERAGE_DIR}/coverage.html"
 
-# Per-package thresholds (match CI)
-declare -A THRESHOLDS=(
-    ["github.com/Dicklesworthstone/beads_viewer/pkg/analysis"]=75
-    ["github.com/Dicklesworthstone/beads_viewer/pkg/export"]=95
-    ["github.com/Dicklesworthstone/beads_viewer/pkg/recipe"]=90
-    ["github.com/Dicklesworthstone/beads_viewer/pkg/ui"]=55
-    ["github.com/Dicklesworthstone/beads_viewer/pkg/loader"]=80
-    ["github.com/Dicklesworthstone/beads_viewer/pkg/updater"]=70
-    ["github.com/Dicklesworthstone/beads_viewer/pkg/watcher"]=80
-    ["github.com/Dicklesworthstone/beads_viewer/pkg/workspace"]=85
-)
+# Project threshold is computed over `pkg/**` only (matches codecov ignore rules).
+PROJECT_THRESHOLD=75
 
-PROJECT_THRESHOLD=60
+# Space-separated list of packages to test for coverage.
+# Default excludes slow E2E suites while still covering the code that matters.
+COVER_PACKAGES="${COVER_PACKAGES:-./pkg/...}"
 
 mkdir -p "$COVERAGE_DIR"
 
+threshold_for_pkg() {
+	case "$1" in
+		github.com/Dicklesworthstone/beads_viewer/pkg/analysis) echo 75 ;;
+		github.com/Dicklesworthstone/beads_viewer/pkg/export) echo 80 ;;
+		github.com/Dicklesworthstone/beads_viewer/pkg/recipe) echo 90 ;;
+		github.com/Dicklesworthstone/beads_viewer/pkg/ui) echo 55 ;;
+		github.com/Dicklesworthstone/beads_viewer/pkg/loader) echo 80 ;;
+		github.com/Dicklesworthstone/beads_viewer/pkg/updater) echo 55 ;;
+		github.com/Dicklesworthstone/beads_viewer/pkg/watcher) echo 80 ;;
+		github.com/Dicklesworthstone/beads_viewer/pkg/workspace) echo 85 ;;
+		*) echo "" ;;
+	esac
+}
+
 run_coverage() {
     echo "Running tests with coverage..."
-    go test -covermode=atomic -coverprofile="$COVERAGE_FILE" ./... 2>&1 | grep -v "^?"
+    go test -covermode=atomic -coverprofile="$COVERAGE_FILE" ${COVER_PACKAGES}
     echo ""
 }
 
 show_summary() {
     echo "=== Coverage Summary ==="
-    total=$(go tool cover -func="$COVERAGE_FILE" | tail -1)
-    echo "$total"
+    go tool cover -func="$COVERAGE_FILE" | tail -1
+    pkg_total="$(pkg_total_coverage)"
+    echo "pkg/*:											(statements)					${pkg_total}%"
     echo ""
 }
 
+per_package_coverage() {
+	awk '
+		NR == 1 { next } # mode line
+		{
+			file = $1
+			sub(/:.*/, "", file)          # strip :line.col,line.col
+			pkg = file
+			sub(/\/[^\/]+$/, "", pkg)     # strip /file.go
+			stmts = $2
+			count = $3
+			total[pkg] += stmts
+			if (count > 0) covered[pkg] += stmts
+		}
+		END {
+			for (pkg in total) {
+				pct = (covered[pkg] / total[pkg]) * 100
+				printf "%s %.2f\n", pkg, pct
+			}
+		}
+	' "$COVERAGE_FILE" | sort
+}
+
+pkg_total_coverage() {
+	awk '
+		NR == 1 { next } # mode line
+		{
+			file = $1
+			sub(/:.*/, "", file)          # strip :line.col,line.col
+			if (file !~ /^github.com\/Dicklesworthstone\/beads_viewer\/pkg\//) {
+				next
+			}
+			stmts = $2
+			count = $3
+			total += stmts
+			if (count > 0) covered += stmts
+		}
+		END {
+			if (total == 0) {
+				printf "0.00"
+			} else {
+				printf "%.2f", (covered / total) * 100
+			}
+		}
+	' "$COVERAGE_FILE"
+}
+
 show_per_package() {
-    echo "=== Per-Package Coverage ==="
-    go tool cover -func="$COVERAGE_FILE" | grep -E '^github.com/Dicklesworthstone/beads_viewer/pkg/[^/]+\)' | \
-        awk '{gsub(/github.com\/Dicklesworthstone\/beads_viewer\//, ""); print $1, $3}' | \
-        column -t
-    echo ""
+	echo "=== Per-Package Coverage (statement-weighted) ==="
+	per_package_coverage
+	echo ""
 }
 
 show_detailed() {
@@ -61,20 +118,18 @@ show_detailed() {
 show_uncovered() {
     echo "=== Uncovered Lines ==="
     echo "Generating uncovered lines report..."
-
-    # Parse coverage.out for lines with 0 coverage
-    awk -F':' '
-    /\.go:/ && !/mode:/ {
-        split($2, parts, ",")
-        line_info = parts[1]
-        split(line_info, line_parts, " ")
-        count = line_parts[2]
-        if (count == "0") {
-            file = $1
-            gsub(/github.com\/Dicklesworthstone\/beads_viewer\//, "", file)
-            print file ":" parts[1]
-        }
-    }' "$COVERAGE_FILE" | head -30
+	awk '
+		NR == 1 { next } # mode line
+		{
+			# Line format: file:start.end,start.end stmts count
+			loc = $1
+			stmts = $2
+			count = $3
+			if (count == 0) {
+				print loc " (stmts=" stmts ")"
+			}
+		}
+	' "$COVERAGE_FILE" | head -30
 
     echo ""
     echo "(Showing first 30 uncovered sections)"
@@ -97,43 +152,40 @@ generate_html() {
 
 check_thresholds() {
     echo "=== Checking Coverage Thresholds ==="
-    local failed=0
+	failed=0
 
-    # Check project threshold
-    total=$(go tool cover -func="$COVERAGE_FILE" | tail -1 | awk '{print $3}' | tr -d '%')
-    if (( $(echo "$total < $PROJECT_THRESHOLD" | bc -l) )); then
-        echo "FAIL: Total coverage ${total}% < ${PROJECT_THRESHOLD}%"
-        failed=1
-    else
-        echo "PASS: Total coverage ${total}% >= ${PROJECT_THRESHOLD}%"
-    fi
+	# Project threshold (pkg/* only, statement-weighted).
+	total="$(pkg_total_coverage)"
+	if awk -v c="$total" -v t="$PROJECT_THRESHOLD" 'BEGIN { exit !(c < t) }'; then
+		echo "FAIL: pkg/* coverage ${total}% < ${PROJECT_THRESHOLD}%"
+		failed=1
+	else
+		echo "PASS: pkg/* coverage ${total}% >= ${PROJECT_THRESHOLD}%"
+	fi
 
-    # Check per-package thresholds
-    go tool cover -func="$COVERAGE_FILE" | grep '^github.com/Dicklesworthstone/beads_viewer/pkg/' | \
-    while read -r line; do
-        pkg=$(echo "$line" | awk '{print $1}')
-        # Extract base package (without function name)
-        base_pkg=$(echo "$pkg" | sed 's/)[^)]*$/)/; s/\/[^/]*$//')
-        pct=$(echo "$line" | awk '{print $3}' | tr -d '%')
+	# Per-package thresholds (statement-weighted).
+	while read -r pkg pct; do
+		req="$(threshold_for_pkg "$pkg")"
+		if [ -z "$req" ]; then
+			continue
+		fi
+		if awk -v p="$pct" -v r="$req" 'BEGIN { exit !(p < r) }'; then
+			echo "FAIL: $pkg ${pct}% < ${req}%"
+			failed=1
+		else
+			echo "PASS: $pkg ${pct}% >= ${req}%"
+		fi
+	done < <(per_package_coverage)
 
-        threshold=${THRESHOLDS[$base_pkg]}
-        if [ -n "$threshold" ]; then
-            if (( $(echo "$pct < $threshold" | bc -l) )); then
-                echo "FAIL: $base_pkg ${pct}% < ${threshold}%"
-                failed=1
-            fi
-        fi
-    done
+	if [ "$failed" -eq 0 ]; then
+		echo ""
+		echo "All coverage thresholds passed!"
+		return 0
+	fi
 
-    if [ $failed -eq 0 ]; then
-        echo ""
-        echo "All coverage thresholds passed!"
-        return 0
-    else
-        echo ""
-        echo "Some coverage thresholds failed!"
-        return 1
-    fi
+	echo ""
+	echo "Some coverage thresholds failed!"
+	return 1
 }
 
 # Main

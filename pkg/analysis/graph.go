@@ -709,7 +709,7 @@ func (a *Analyzer) computePhase2WithProfile(ctx context.Context, stats *GraphSta
 					// Panic -> implicitly causes timeout in parent
 				}
 			}()
-			prDone <- network.PageRank(a.g, 0.85, 1e-6)
+			prDone <- computePageRank(a.g, 0.85, 1e-6)
 		}()
 
 		timer := time.NewTimer(config.PageRankTimeout)
@@ -1350,6 +1350,92 @@ func (a *Analyzer) GetOpenBlockers(issueID string) []string {
 }
 
 // computeEigenvector runs a simple power-iteration to estimate eigenvector centrality.
+func computePageRank(g graph.Directed, damp, tol float64) map[int64]float64 {
+	nodes := graph.NodesOf(g.Nodes())
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ID() < nodes[j].ID() })
+	if len(nodes) == 0 {
+		return map[int64]float64{}
+	}
+	if tol <= 0 {
+		tol = 1e-6
+	}
+
+	indexOf := make(map[int64]int, len(nodes))
+	for i, n := range nodes {
+		indexOf[n.ID()] = i
+	}
+
+	out := make([][]int, len(nodes))
+	for j, u := range nodes {
+		to := graph.NodesOf(g.From(u.ID()))
+		sort.Slice(to, func(i, j int) bool { return to[i].ID() < to[j].ID() })
+
+		if len(to) == 0 {
+			continue
+		}
+
+		out[j] = make([]int, 0, len(to))
+		for _, v := range to {
+			if idx, ok := indexOf[v.ID()]; ok {
+				out[j] = append(out[j], idx)
+			}
+		}
+	}
+
+	n := float64(len(nodes))
+	rank := make([]float64, len(nodes))
+	uniform := 1.0 / n
+	for i := range rank {
+		rank[i] = uniform
+	}
+	next := make([]float64, len(nodes))
+
+	base := (1 - damp) / n
+	const maxIterations = 1000
+	for iter := 0; iter < maxIterations; iter++ {
+		for i := range next {
+			next[i] = base
+		}
+
+		dangling := 0.0
+		for j := range nodes {
+			outdeg := len(out[j])
+			if outdeg == 0 {
+				dangling += rank[j]
+				continue
+			}
+			share := damp * rank[j] / float64(outdeg)
+			for _, i := range out[j] {
+				next[i] += share
+			}
+		}
+		if dangling != 0 {
+			add := damp * dangling / n
+			for i := range next {
+				next[i] += add
+			}
+		}
+
+		diff := 0.0
+		for i := range rank {
+			d := next[i] - rank[i]
+			diff += d * d
+		}
+
+		rank, next = next, rank
+		if math.Sqrt(diff) < tol {
+			break
+		}
+	}
+
+	ranks := make(map[int64]float64, len(nodes))
+	for i, node := range nodes {
+		ranks[node.ID()] = rank[i]
+	}
+
+	return ranks
+}
+
 func computeEigenvector(g graph.Directed) map[int64]float64 {
 	nodes := g.Nodes()
 	var nodeList []graph.Node
