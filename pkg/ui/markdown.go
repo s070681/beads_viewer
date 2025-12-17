@@ -1,0 +1,392 @@
+package ui
+
+import (
+	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/glamour/ansi"
+	"github.com/charmbracelet/lipgloss"
+)
+
+// MarkdownRenderer provides theme-aware markdown rendering using glamour.
+// It detects the terminal's color scheme and uses appropriate styles.
+type MarkdownRenderer struct {
+	renderer *glamour.TermRenderer
+	width    int
+	isDark   bool
+}
+
+// NewMarkdownRenderer creates a new theme-aware markdown renderer.
+// It uses Dracula style for dark terminals and a light style for light terminals.
+func NewMarkdownRenderer(width int) *MarkdownRenderer {
+	isDark := lipgloss.HasDarkBackground()
+
+	var styleName string
+	if isDark {
+		styleName = "dracula"
+	} else {
+		styleName = "light"
+	}
+
+	renderer, _ := glamour.NewTermRenderer(
+		glamour.WithStylePath(styleName),
+		glamour.WithWordWrap(width),
+	)
+
+	return &MarkdownRenderer{
+		renderer: renderer,
+		width:    width,
+		isDark:   isDark,
+	}
+}
+
+// NewMarkdownRendererWithTheme creates a markdown renderer using custom colors
+// that match the provided Theme for visual consistency.
+func NewMarkdownRendererWithTheme(width int, theme Theme) *MarkdownRenderer {
+	isDark := lipgloss.HasDarkBackground()
+	styleConfig := buildStyleFromTheme(theme, isDark)
+
+	renderer, _ := glamour.NewTermRenderer(
+		glamour.WithStyles(styleConfig),
+		glamour.WithWordWrap(width),
+	)
+
+	return &MarkdownRenderer{
+		renderer: renderer,
+		width:    width,
+		isDark:   isDark,
+	}
+}
+
+// Render converts markdown content to styled terminal output.
+func (mr *MarkdownRenderer) Render(markdown string) (string, error) {
+	if mr.renderer == nil {
+		return markdown, nil
+	}
+	return mr.renderer.Render(markdown)
+}
+
+// SetWidth updates the word wrap width and recreates the renderer.
+func (mr *MarkdownRenderer) SetWidth(width int) {
+	if width == mr.width || width <= 0 {
+		return
+	}
+	mr.width = width
+
+	var styleName string
+	if mr.isDark {
+		styleName = "dracula"
+	} else {
+		styleName = "light"
+	}
+
+	if r, err := glamour.NewTermRenderer(
+		glamour.WithStylePath(styleName),
+		glamour.WithWordWrap(width),
+	); err == nil {
+		mr.renderer = r
+	}
+}
+
+// SetWidthWithTheme updates width and recreates renderer with theme colors.
+func (mr *MarkdownRenderer) SetWidthWithTheme(width int, theme Theme) {
+	if width == mr.width || width <= 0 {
+		return
+	}
+	mr.width = width
+	styleConfig := buildStyleFromTheme(theme, mr.isDark)
+
+	if r, err := glamour.NewTermRenderer(
+		glamour.WithStyles(styleConfig),
+		glamour.WithWordWrap(width),
+	); err == nil {
+		mr.renderer = r
+	}
+}
+
+// IsDarkMode returns whether the renderer is using dark mode styling.
+func (mr *MarkdownRenderer) IsDarkMode() bool {
+	return mr.isDark
+}
+
+// buildStyleFromTheme creates a glamour StyleConfig that matches the bv Theme.
+func buildStyleFromTheme(theme Theme, isDark bool) ansi.StyleConfig {
+	// Extract hex colors from adaptive colors
+	primaryColor := extractHex(theme.Primary, isDark)
+	secondaryColor := extractHex(theme.Secondary, isDark)
+	openColor := extractHex(theme.Open, isDark)
+	featureColor := extractHex(theme.Feature, isDark)
+	inProgressColor := extractHex(theme.InProgress, isDark)
+	mutedColor := extractHex(theme.Muted, isDark)
+	blockedColor := extractHex(theme.Blocked, isDark)
+
+	// Base document style
+	var docBg, docFg string
+	if isDark {
+		docBg = "#282a36"
+		docFg = "#f8f8f2"
+	} else {
+		docBg = ""
+		docFg = "#000000"
+	}
+
+	return ansi.StyleConfig{
+		Document: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Color:           stringPtr(docFg),
+				BackgroundColor: stringPtr(docBg),
+			},
+			Margin: uintPtr(0),
+		},
+		BlockQuote: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Color:  stringPtr(featureColor),
+				Italic: boolPtr(true),
+			},
+			Indent: uintPtr(2),
+		},
+		Paragraph: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Color: stringPtr(docFg),
+			},
+		},
+		List: ansi.StyleList{
+			StyleBlock: ansi.StyleBlock{
+				StylePrimitive: ansi.StylePrimitive{
+					Color: stringPtr(docFg),
+				},
+			},
+			LevelIndent: 2,
+		},
+		Heading: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Color: stringPtr(primaryColor),
+				Bold:  boolPtr(true),
+			},
+		},
+		H1: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Color:  stringPtr(primaryColor),
+				Bold:   boolPtr(true),
+				Prefix: "# ",
+			},
+		},
+		H2: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Color:  stringPtr(primaryColor),
+				Bold:   boolPtr(true),
+				Prefix: "## ",
+			},
+		},
+		H3: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Color:  stringPtr(primaryColor),
+				Bold:   boolPtr(true),
+				Prefix: "### ",
+			},
+		},
+		H4: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Color:  stringPtr(secondaryColor),
+				Bold:   boolPtr(true),
+				Prefix: "#### ",
+			},
+		},
+		H5: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Color:  stringPtr(secondaryColor),
+				Bold:   boolPtr(true),
+				Prefix: "##### ",
+			},
+		},
+		H6: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Color:  stringPtr(mutedColor),
+				Bold:   boolPtr(true),
+				Prefix: "###### ",
+			},
+		},
+		Strong: ansi.StylePrimitive{
+			Color: stringPtr(featureColor),
+			Bold:  boolPtr(true),
+		},
+		Emph: ansi.StylePrimitive{
+			Color:  stringPtr(inProgressColor),
+			Italic: boolPtr(true),
+		},
+		Strikethrough: ansi.StylePrimitive{
+			CrossedOut: boolPtr(true),
+		},
+		HorizontalRule: ansi.StylePrimitive{
+			Color:  stringPtr(mutedColor),
+			Format: "─────────────────────────────────────────",
+		},
+		Item: ansi.StylePrimitive{
+			BlockPrefix: "• ",
+		},
+		Enumeration: ansi.StylePrimitive{
+			Color: stringPtr(inProgressColor),
+		},
+		Task: ansi.StyleTask{
+			Ticked:   "[✓] ",
+			Unticked: "[ ] ",
+		},
+		Link: ansi.StylePrimitive{
+			Color:     stringPtr(inProgressColor),
+			Underline: boolPtr(true),
+		},
+		LinkText: ansi.StylePrimitive{
+			Color: stringPtr(primaryColor),
+		},
+		Image: ansi.StylePrimitive{
+			Color:     stringPtr(inProgressColor),
+			Underline: boolPtr(true),
+		},
+		ImageText: ansi.StylePrimitive{
+			Color:  stringPtr(docFg),
+			Format: "Image: {{.text}} →",
+		},
+		Code: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Color: stringPtr(openColor),
+			},
+		},
+		CodeBlock: ansi.StyleCodeBlock{
+			StyleBlock: ansi.StyleBlock{
+				StylePrimitive: ansi.StylePrimitive{
+					Color: stringPtr(featureColor),
+				},
+				Margin: uintPtr(1),
+			},
+			Chroma: &ansi.Chroma{
+				Text: ansi.StylePrimitive{
+					Color: stringPtr(docFg),
+				},
+				Error: ansi.StylePrimitive{
+					Color: stringPtr(blockedColor),
+				},
+				Comment: ansi.StylePrimitive{
+					Color:  stringPtr(mutedColor),
+					Italic: boolPtr(true),
+				},
+				CommentPreproc: ansi.StylePrimitive{
+					Color: stringPtr(inProgressColor),
+				},
+				Keyword: ansi.StylePrimitive{
+					Color: stringPtr(primaryColor),
+				},
+				KeywordReserved: ansi.StylePrimitive{
+					Color: stringPtr(primaryColor),
+				},
+				KeywordNamespace: ansi.StylePrimitive{
+					Color: stringPtr(primaryColor),
+				},
+				KeywordType: ansi.StylePrimitive{
+					Color: stringPtr(inProgressColor),
+				},
+				Operator: ansi.StylePrimitive{
+					Color: stringPtr(primaryColor),
+				},
+				Punctuation: ansi.StylePrimitive{
+					Color: stringPtr(docFg),
+				},
+				Name: ansi.StylePrimitive{
+					Color: stringPtr(inProgressColor),
+				},
+				NameBuiltin: ansi.StylePrimitive{
+					Color: stringPtr(inProgressColor),
+				},
+				NameTag: ansi.StylePrimitive{
+					Color: stringPtr(primaryColor),
+				},
+				NameAttribute: ansi.StylePrimitive{
+					Color: stringPtr(openColor),
+				},
+				NameClass: ansi.StylePrimitive{
+					Color: stringPtr(inProgressColor),
+				},
+				NameConstant: ansi.StylePrimitive{
+					Color: stringPtr(primaryColor),
+				},
+				NameDecorator: ansi.StylePrimitive{
+					Color: stringPtr(openColor),
+				},
+				NameException: ansi.StylePrimitive{
+					Color: stringPtr(blockedColor),
+				},
+				NameFunction: ansi.StylePrimitive{
+					Color: stringPtr(openColor),
+				},
+				NameOther: ansi.StylePrimitive{
+					Color: stringPtr(docFg),
+				},
+				Literal: ansi.StylePrimitive{
+					Color: stringPtr(featureColor),
+				},
+				LiteralNumber: ansi.StylePrimitive{
+					Color: stringPtr(primaryColor),
+				},
+				LiteralDate: ansi.StylePrimitive{
+					Color: stringPtr(featureColor),
+				},
+				LiteralString: ansi.StylePrimitive{
+					Color: stringPtr(featureColor),
+				},
+				LiteralStringEscape: ansi.StylePrimitive{
+					Color: stringPtr(primaryColor),
+				},
+				GenericDeleted: ansi.StylePrimitive{
+					Color: stringPtr(blockedColor),
+				},
+				GenericEmph: ansi.StylePrimitive{
+					Italic: boolPtr(true),
+				},
+				GenericInserted: ansi.StylePrimitive{
+					Color: stringPtr(openColor),
+				},
+				GenericStrong: ansi.StylePrimitive{
+					Bold: boolPtr(true),
+				},
+				GenericSubheading: ansi.StylePrimitive{
+					Color: stringPtr(mutedColor),
+				},
+				Background: ansi.StylePrimitive{
+					BackgroundColor: stringPtr(docBg),
+				},
+			},
+		},
+		Table: ansi.StyleTable{
+			StyleBlock: ansi.StyleBlock{
+				StylePrimitive: ansi.StylePrimitive{
+					Color: stringPtr(docFg),
+				},
+			},
+			CenterSeparator: stringPtr("┼"),
+			ColumnSeparator: stringPtr("│"),
+			RowSeparator:    stringPtr("─"),
+		},
+		DefinitionDescription: ansi.StylePrimitive{
+			Color:       stringPtr(docFg),
+			BlockPrefix: "\n→ ",
+		},
+	}
+}
+
+// extractHex gets the hex color string from an AdaptiveColor.
+func extractHex(ac lipgloss.AdaptiveColor, isDark bool) string {
+	if isDark {
+		return ac.Dark
+	}
+	return ac.Light
+}
+
+// Helper functions for pointer creation
+func stringPtr(s string) *string {
+	return &s
+}
+
+func boolPtr(b bool) *bool {
+	return &b
+}
+
+func uintPtr(u uint) *uint {
+	return &u
+}

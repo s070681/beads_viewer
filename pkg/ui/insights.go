@@ -1248,19 +1248,19 @@ func (m *InsightsModel) renderHeatmapPanel(width, height int, t Theme) string {
 			count := grid[i][j]
 			if count == 0 {
 				// Empty cell
-				sb.WriteString(t.Renderer.NewStyle().Foreground(GradientLow).Render(fmt.Sprintf(" %*s", cellWidth-1, "·")))
+				sb.WriteString(t.Renderer.NewStyle().Foreground(t.Secondary).Render(fmt.Sprintf(" %*s", cellWidth-1, "·")))
 			} else {
 				// Color based on count intensity and urgency
 				intensity := float64(count) / float64(maxCount)
 
 				// Adjust color based on urgency (if we have due date data)
-				color := GetHeatmapColor(intensity)
+				color := GetHeatmapColor(intensity, t)
 				if urgencyCount[i][j] > 0 {
 					avgDays := urgencyGrid[i][j] / float64(urgencyCount[i][j])
 					if avgDays < 7 {
-						color = GradientPeak // Urgent - pink
+						color = t.Primary // Urgent - pink/purple
 					} else if avgDays < 14 {
-						color = GradientHigh // Soon - purple
+						color = t.Feature // Soon - orange
 					}
 				}
 
@@ -1285,13 +1285,13 @@ func (m *InsightsModel) renderHeatmapPanel(width, height int, t Theme) string {
 	sb.WriteString("\n")
 	legendStyle := t.Renderer.NewStyle().Foreground(t.Subtext)
 	sb.WriteString(legendStyle.Render("Legend: "))
-	sb.WriteString(t.Renderer.NewStyle().Foreground(GradientLow).Render("· "))
+	sb.WriteString(t.Renderer.NewStyle().Foreground(t.Secondary).Render("· "))
 	sb.WriteString(legendStyle.Render("empty "))
-	sb.WriteString(t.Renderer.NewStyle().Foreground(GradientMid).Render("█ "))
+	sb.WriteString(t.Renderer.NewStyle().Foreground(t.InProgress).Render("█ "))
 	sb.WriteString(legendStyle.Render("few "))
-	sb.WriteString(t.Renderer.NewStyle().Foreground(GradientHigh).Render("██ "))
+	sb.WriteString(t.Renderer.NewStyle().Foreground(t.Feature).Render("██ "))
 	sb.WriteString(legendStyle.Render("some "))
-	sb.WriteString(t.Renderer.NewStyle().Foreground(GradientPeak).Render("███ "))
+	sb.WriteString(t.Renderer.NewStyle().Foreground(t.Primary).Render("███ "))
 	sb.WriteString(legendStyle.Render("many/urgent"))
 
 	return panelStyle.Render(sb.String())

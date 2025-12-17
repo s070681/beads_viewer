@@ -175,7 +175,7 @@ type Model struct {
 	// UI Components
 	list               list.Model
 	viewport           viewport.Model
-	renderer           *glamour.TermRenderer
+	renderer           *MarkdownRenderer
 	board              BoardModel
 	labelDashboard     LabelDashboardModel
 	velocityComparison VelocityComparisonModel // bv-125
