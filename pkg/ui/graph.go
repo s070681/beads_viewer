@@ -764,7 +764,7 @@ func (g *GraphModel) renderMetricsPanel(id string, width int, t Theme) string {
 		if maxVal > 0 {
 			normalized = value / maxVal
 		}
-		bar := RenderMiniBar(normalized, 6)
+		bar := RenderMiniBar(normalized, 6, t)
 
 		// Rank badge
 		rankBadge := RenderRankBadge(rank, total)
