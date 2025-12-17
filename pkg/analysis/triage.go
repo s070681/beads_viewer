@@ -433,13 +433,77 @@ func ComputeTriageWithOptionsAndTime(issues []model.Issue, opts TriageOptions, n
 
 // buildUnblocksMap computes what each issue unblocks
 func buildUnblocksMap(analyzer *Analyzer, issues []model.Issue) map[string][]string {
-	unblocksMap := make(map[string][]string)
-	for _, issue := range issues {
-		if issue.Status == model.StatusClosed {
+	// O(E) unblocks computation.
+	//
+	// Semantics (must match Analyzer.computeUnblocks):
+	// - Only blocking deps count (dep.Type.IsBlocking()).
+	// - Missing blockers don't block (ignore deps whose target isn't in issueMap).
+	// - Duplicate deps must not double-count (graph edges are unique).
+	// - Closing blocker B unblocks dependent D iff all other existing blocking deps of D are closed.
+	// - Closed dependents are ignored.
+	// - Result slices are sorted for determinism.
+
+	issueByID := analyzer.issueMap
+
+	// blockerID -> dependents that have a blocking dep on blockerID (deduped per dependent)
+	dependentsByBlocker := make(map[string][]string)
+	// dependentID -> number of currently-open blocking deps (existing + blocking + unique)
+	openBlockerCount := make(map[string]int, len(issues))
+
+	for _, dependent := range issues {
+		if dependent.Status == model.StatusClosed {
 			continue
 		}
-		unblocksMap[issue.ID] = analyzer.computeUnblocks(issue.ID)
+		if len(dependent.Dependencies) == 0 {
+			continue
+		}
+
+		seen := make(map[string]struct{}, len(dependent.Dependencies))
+		for _, dep := range dependent.Dependencies {
+			if dep == nil || !dep.Type.IsBlocking() {
+				continue
+			}
+			blockerID := dep.DependsOnID
+			if blockerID == "" {
+				continue
+			}
+			blocker, exists := issueByID[blockerID]
+			if !exists {
+				continue
+			}
+			if _, dup := seen[blockerID]; dup {
+				continue
+			}
+			seen[blockerID] = struct{}{}
+
+			dependentsByBlocker[blockerID] = append(dependentsByBlocker[blockerID], dependent.ID)
+			if blocker.Status != model.StatusClosed {
+				openBlockerCount[dependent.ID]++
+			}
+		}
 	}
+
+	unblocksMap := make(map[string][]string, len(issues))
+	for _, blocker := range issues {
+		if blocker.Status == model.StatusClosed {
+			continue
+		}
+
+		var unblocks []string
+		for _, dependentID := range dependentsByBlocker[blocker.ID] {
+			depIssue, ok := issueByID[dependentID]
+			if !ok || depIssue.Status == model.StatusClosed {
+				continue
+			}
+			if openBlockerCount[dependentID] == 1 {
+				unblocks = append(unblocks, dependentID)
+			}
+		}
+
+		sort.Strings(unblocks)
+		unblocksMap[blocker.ID] = unblocks
+	}
+
 	return unblocksMap
 }
 

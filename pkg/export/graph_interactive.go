@@ -150,7 +150,8 @@ func GenerateInteractiveGraphHTML(opts InteractiveGraphOptions) (string, error) 
 			if dep == nil || !issueMap[dep.DependsOnID] {
 				continue
 			}
-			isCritical := slack[iss.ID] == 0 && slack[dep.DependsOnID] == 0
+			// Only mark as critical if we have stats AND both ends have zero slack
+			isCritical := opts.Stats != nil && slack[iss.ID] == 0 && slack[dep.DependsOnID] == 0
 			link := graphLink{
 				Source:   iss.ID,
 				Target:   dep.DependsOnID,
@@ -691,7 +692,7 @@ const Graph = ForceGraph()(container)
         const size = getNodeSize(n) + 3;
         ctx.fillStyle = c; ctx.beginPath(); ctx.arc(n.x, n.y, size, 0, 2 * Math.PI); ctx.fill();
     })
-    .onNodeClick(selectNode)
+    .onNodeClick(handleNodeClick)
     .onNodeRightClick((node, event) => { event.preventDefault(); showContextMenu(node, event); })
     .onNodeHover(n => container.style.cursor = n ? 'pointer' : 'grab')
     .onBackgroundClick(() => { clearSelection(); hideContextMenu(); })
@@ -759,6 +760,59 @@ document.getElementById('ctx-copy').onclick = () => { if (contextNode) { navigat
 document.getElementById('ctx-path').onclick = () => { showToast('Click another node to find path'); pathStartNode = contextNode; hideContextMenu(); };
 
 let pathStartNode = null;
+
+// BFS path finding between two nodes
+function findPath(startId, endId) {
+    const queue = [[startId]];
+    const visited = new Set([startId]);
+    while (queue.length > 0) {
+        const path = queue.shift();
+        const current = path[path.length - 1];
+        if (current === endId) return path;
+        DATA.links.forEach(l => {
+            const src = typeof l.source === 'object' ? l.source.id : l.source;
+            const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+            // Check both directions (undirected path)
+            if (src === current && !visited.has(tgt)) {
+                visited.add(tgt);
+                queue.push([...path, tgt]);
+            }
+            if (tgt === current && !visited.has(src)) {
+                visited.add(src);
+                queue.push([...path, src]);
+            }
+        });
+    }
+    return null; // No path found
+}
+
+function highlightPath(path) {
+    const pathSet = new Set(path);
+    Graph.nodeVisibility(n => pathSet.has(n.id));
+    Graph.linkVisibility(l => {
+        const src = typeof l.source === 'object' ? l.source.id : l.source;
+        const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+        return pathSet.has(src) && pathSet.has(tgt);
+    });
+    updateVisibleCount();
+    showToast('Path: ' + path.length + ' nodes');
+}
+
+// Wrapper for node click to handle path-finding mode
+function handleNodeClick(node) {
+    if (pathStartNode) {
+        const path = findPath(pathStartNode.id, node.id);
+        if (path) {
+            highlightPath(path);
+        } else {
+            showToast('No path found between ' + pathStartNode.id + ' and ' + node.id);
+        }
+        pathStartNode = null;
+    } else {
+        selectNode(node);
+    }
+}
+
 function highlightDependencies(node, type) {
     const connected = new Set([node.id]);
     DATA.links.forEach(l => {
@@ -837,7 +891,9 @@ document.getElementById('btn-top').onclick = () => {
         panel.innerHTML = sorted.map((n, i) => '<div class="top-node-item" data-id="' + n.id + '"><span class="rank">#' + (i+1) + '</span><span>' + n.id + '</span></div>').join('');
         panel.querySelectorAll('.top-node-item').forEach(el => {
             el.onclick = () => {
-                const node = DATA.nodes.find(n => n.id === el.dataset.id);
+                // Use graphData().nodes for x/y coordinates (DATA.nodes lacks them)
+                const graphNodes = Graph.graphData().nodes;
+                const node = graphNodes.find(n => n.id === el.dataset.id);
                 if (node) { selectNode(node); Graph.centerAt(node.x, node.y, 500); Graph.zoom(2.5, 500); }
             };
         });
