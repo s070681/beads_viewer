@@ -1435,3 +1435,392 @@ func TestExportPages_PrecomputedLayoutUsedByViewer(t *testing.T) {
 		}
 	}
 }
+
+// TestExportPages_DetailPaneAllProperties verifies all detail pane property bindings exist
+func TestExportPages_DetailPaneAllProperties(t *testing.T) {
+	bv := buildBvBinary(t)
+	stageViewerAssets(t, bv)
+
+	repoDir := createRepoWithDeps(t) // Use deps repo for rich data
+	exportDir := filepath.Join(repoDir, "bv-pages")
+
+	cmd := exec.Command(bv, "--export-pages", exportDir)
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("--export-pages failed: %v\n%s", err, out)
+	}
+
+	// Read index.html
+	htmlBytes, err := os.ReadFile(filepath.Join(exportDir, "index.html"))
+	if err != nil {
+		t.Fatalf("read index.html: %v", err)
+	}
+	html := string(htmlBytes)
+
+	// Verify ALL detail pane property bindings for comprehensive UI
+	propertyBindings := []struct {
+		property    string
+		description string
+	}{
+		{"graphDetailNode?.id", "Issue ID binding"},
+		{"graphDetailNode?.title", "Issue title binding"},
+		{"graphDetailNode?.status", "Status binding"},
+		{"graphDetailNode?.priority", "Priority binding"},
+		{"graphDetailNode?.type", "Issue type binding"},
+		{"graphDetailNode?.assignee", "Assignee binding"},
+		{"graphDetailNode?.blockerCount", "Blocker count binding"},
+		{"graphDetailNode?.dependentCount", "Dependent count binding"},
+		{"graphDetailNode?.labels", "Labels binding"},
+		{"graphDetailNode?.pagerank", "PageRank metric binding"},
+		{"graphDetailNode?.betweenness", "Betweenness metric binding"},
+		{"graphDetailNode?.description", "Description binding"},
+		{"graphDetailNode?.createdAt", "Created date binding"},
+		{"graphDetailNode?.updatedAt", "Updated date binding"},
+	}
+
+	for _, pb := range propertyBindings {
+		if !strings.Contains(html, pb.property) {
+			t.Errorf("index.html missing %s: %s", pb.description, pb.property)
+		}
+	}
+
+	// Verify inCycle indicator exists for cycle detection UI
+	if !strings.Contains(html, "graphDetailNode?.inCycle") {
+		t.Error("index.html missing inCycle indicator binding")
+	}
+}
+
+// TestExportPages_GraphLayoutCycleDetection verifies cycles are detected in graph_layout.json
+func TestExportPages_GraphLayoutCycleDetection(t *testing.T) {
+	bv := buildBvBinary(t)
+	stageViewerAssets(t, bv)
+
+	// Create repo with a dependency cycle: A -> B -> C -> A
+	repoDir := t.TempDir()
+	beadsPath := filepath.Join(repoDir, ".beads")
+	if err := os.MkdirAll(beadsPath, 0o755); err != nil {
+		t.Fatalf("mkdir beads: %v", err)
+	}
+
+	// Create circular dependency: A depends on C, B depends on A, C depends on B -> forms cycle
+	jsonl := `{"id": "cycle-a", "title": "Cycle Node A", "status": "open", "priority": 1, "issue_type": "task", "dependencies": [{"issue_id": "cycle-a", "depends_on_id": "cycle-c", "type": "blocks"}]}
+{"id": "cycle-b", "title": "Cycle Node B", "status": "open", "priority": 1, "issue_type": "task", "dependencies": [{"issue_id": "cycle-b", "depends_on_id": "cycle-a", "type": "blocks"}]}
+{"id": "cycle-c", "title": "Cycle Node C", "status": "open", "priority": 1, "issue_type": "task", "dependencies": [{"issue_id": "cycle-c", "depends_on_id": "cycle-b", "type": "blocks"}]}
+{"id": "non-cycle", "title": "Non-Cycle Node", "status": "open", "priority": 2, "issue_type": "task"}`
+
+	if err := os.WriteFile(filepath.Join(beadsPath, "beads.jsonl"), []byte(jsonl), 0o644); err != nil {
+		t.Fatalf("write beads.jsonl: %v", err)
+	}
+
+	exportDir := filepath.Join(repoDir, "bv-pages")
+	cmd := exec.Command(bv, "--export-pages", exportDir)
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("--export-pages failed: %v\n%s", err, out)
+	}
+
+	// Read graph_layout.json
+	layoutBytes, err := os.ReadFile(filepath.Join(exportDir, "data", "graph_layout.json"))
+	if err != nil {
+		t.Fatalf("read graph_layout.json: %v", err)
+	}
+
+	var layout struct {
+		Cycles    [][]string            `json:"cycles"`
+		Metrics   map[string][5]float64 `json:"metrics"`
+		NodeCount int                   `json:"node_count"`
+	}
+	if err := json.Unmarshal(layoutBytes, &layout); err != nil {
+		t.Fatalf("decode graph_layout.json: %v", err)
+	}
+
+	// Verify cycles were detected
+	if len(layout.Cycles) == 0 {
+		t.Error("graph_layout.json should detect the circular dependency cycle")
+	}
+
+	// Verify cycle contains expected nodes
+	foundCycle := false
+	for _, cycle := range layout.Cycles {
+		// Check if this cycle contains our cycle nodes
+		hasCycleA := false
+		hasCycleB := false
+		hasCycleC := false
+		for _, id := range cycle {
+			switch id {
+			case "cycle-a":
+				hasCycleA = true
+			case "cycle-b":
+				hasCycleB = true
+			case "cycle-c":
+				hasCycleC = true
+			}
+		}
+		if hasCycleA && hasCycleB && hasCycleC {
+			foundCycle = true
+			break
+		}
+	}
+	if !foundCycle {
+		t.Errorf("cycle not found containing all expected nodes: %v", layout.Cycles)
+	}
+
+	// Verify metrics show inCycle flag (index 4) for cycle nodes
+	cycleNodeIDs := []string{"cycle-a", "cycle-b", "cycle-c"}
+	for _, id := range cycleNodeIDs {
+		metrics, ok := layout.Metrics[id]
+		if !ok {
+			t.Errorf("missing metrics for cycle node %s", id)
+			continue
+		}
+		// Index 4 is the inCycle flag (0 or 1)
+		if metrics[4] != 1 {
+			t.Errorf("node %s should have inCycle=1, got %v", id, metrics[4])
+		}
+	}
+
+	// Non-cycle node should have inCycle=0
+	if metrics, ok := layout.Metrics["non-cycle"]; ok {
+		if metrics[4] != 0 {
+			t.Errorf("non-cycle node should have inCycle=0, got %v", metrics[4])
+		}
+	}
+}
+
+// TestExportPages_GraphLayoutLargeScale tests graph layout with 50 nodes
+func TestExportPages_GraphLayoutLargeScale(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping large scale test in short mode")
+	}
+
+	bv := buildBvBinary(t)
+	stageViewerAssets(t, bv)
+
+	// Create repo with 50 nodes and chain dependencies
+	repoDir := t.TempDir()
+	beadsPath := filepath.Join(repoDir, ".beads")
+	if err := os.MkdirAll(beadsPath, 0o755); err != nil {
+		t.Fatalf("mkdir beads: %v", err)
+	}
+
+	var issues strings.Builder
+	nodeCount := 50
+	for i := 1; i <= nodeCount; i++ {
+		status := "open"
+		if i%5 == 0 {
+			status = "closed"
+		}
+		priority := i % 4
+		issueType := "task"
+		if i%7 == 0 {
+			issueType = "bug"
+		}
+
+		// Create chain: node-1 <- node-2 <- node-3 ... (every 3rd node depends on previous)
+		deps := ""
+		if i > 1 && i%3 == 0 {
+			deps = fmt.Sprintf(`, "dependencies": [{"target_id": "scale-%d", "type": "blocks"}]`, i-1)
+		}
+
+		line := fmt.Sprintf(`{"id": "scale-%d", "title": "Scale Test Issue %d", "status": "%s", "priority": %d, "issue_type": "%s"%s}`,
+			i, i, status, priority, issueType, deps)
+		issues.WriteString(line + "\n")
+	}
+
+	if err := os.WriteFile(filepath.Join(beadsPath, "beads.jsonl"), []byte(issues.String()), 0o644); err != nil {
+		t.Fatalf("write beads.jsonl: %v", err)
+	}
+
+	exportDir := filepath.Join(repoDir, "bv-pages")
+	cmd := exec.Command(bv, "--export-pages", exportDir, "--pages-include-closed")
+	cmd.Dir = repoDir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("--export-pages failed: %v\n%s", err, out)
+	}
+
+	// Read graph_layout.json
+	layoutBytes, err := os.ReadFile(filepath.Join(exportDir, "data", "graph_layout.json"))
+	if err != nil {
+		t.Fatalf("read graph_layout.json: %v", err)
+	}
+
+	var layout struct {
+		Positions map[string][2]float64 `json:"positions"`
+		Metrics   map[string][5]float64 `json:"metrics"`
+		Links     [][2]string           `json:"links"`
+		NodeCount int                   `json:"node_count"`
+		EdgeCount int                   `json:"edge_count"`
+	}
+	if err := json.Unmarshal(layoutBytes, &layout); err != nil {
+		t.Fatalf("decode graph_layout.json: %v", err)
+	}
+
+	// Verify all nodes have positions
+	if layout.NodeCount != nodeCount {
+		t.Errorf("node_count = %d, want %d", layout.NodeCount, nodeCount)
+	}
+	if len(layout.Positions) != nodeCount {
+		t.Errorf("positions count = %d, want %d", len(layout.Positions), nodeCount)
+	}
+	if len(layout.Metrics) != nodeCount {
+		t.Errorf("metrics count = %d, want %d", len(layout.Metrics), nodeCount)
+	}
+
+	// Verify positions are spread out (not all at same point)
+	var sumX, sumY float64
+	for _, pos := range layout.Positions {
+		sumX += pos[0]
+		sumY += pos[1]
+	}
+	avgX := sumX / float64(nodeCount)
+	avgY := sumY / float64(nodeCount)
+
+	// At least some nodes should be away from average (spread check)
+	spreadCount := 0
+	threshold := 50.0 // pixels from center
+	for _, pos := range layout.Positions {
+		dx := pos[0] - avgX
+		dy := pos[1] - avgY
+		dist := dx*dx + dy*dy
+		if dist > threshold*threshold {
+			spreadCount++
+		}
+	}
+	if spreadCount < nodeCount/4 {
+		t.Errorf("positions not well spread: only %d/%d nodes are away from center", spreadCount, nodeCount)
+	}
+
+	t.Logf("Large scale test: %d nodes, %d edges, %d spread from center",
+		layout.NodeCount, layout.EdgeCount, spreadCount)
+}
+
+// TestExportPages_DetailPaneIntegration verifies detail pane works with actual data
+func TestExportPages_DetailPaneIntegration(t *testing.T) {
+	bv := buildBvBinary(t)
+	stageViewerAssets(t, bv)
+
+	// Create a repo with rich data for detail pane testing
+	repoDir := t.TempDir()
+	beadsPath := filepath.Join(repoDir, ".beads")
+	if err := os.MkdirAll(beadsPath, 0o755); err != nil {
+		t.Fatalf("mkdir beads: %v", err)
+	}
+
+	// Create issues with all properties that detail pane displays
+	jsonl := `{"id": "detail-1", "title": "Feature: User Authentication", "description": "Implement OAuth2 login flow with Google and GitHub providers.\n\n## Tasks\n- Setup OAuth app\n- Implement callback handler\n- Add session management", "status": "in_progress", "priority": 0, "issue_type": "feature", "labels": ["auth", "security", "p0"], "assignee": "alice@example.com", "created_at": "2025-01-15T10:00:00Z", "updated_at": "2025-01-18T15:30:00Z"}
+{"id": "detail-2", "title": "Bug: Login redirect fails", "description": "Users are redirected to wrong page after OAuth callback.", "status": "blocked", "priority": 1, "issue_type": "bug", "labels": ["auth", "bug"], "dependencies": [{"issue_id": "detail-2", "depends_on_id": "detail-1", "type": "blocks"}], "created_at": "2025-01-16T09:00:00Z", "updated_at": "2025-01-17T11:00:00Z"}
+{"id": "detail-3", "title": "Task: Write auth tests", "description": "Add unit and integration tests for auth module.", "status": "open", "priority": 2, "issue_type": "task", "labels": ["testing"], "dependencies": [{"issue_id": "detail-3", "depends_on_id": "detail-2", "type": "blocks"}], "created_at": "2025-01-17T14:00:00Z"}`
+
+	if err := os.WriteFile(filepath.Join(beadsPath, "beads.jsonl"), []byte(jsonl), 0o644); err != nil {
+		t.Fatalf("write beads.jsonl: %v", err)
+	}
+
+	exportDir := filepath.Join(repoDir, "bv-pages")
+	cmd := exec.Command(bv, "--export-pages", exportDir)
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("--export-pages failed: %v\n%s", err, out)
+	}
+
+	// Verify SQLite has issues with correct data
+	dbPath := filepath.Join(exportDir, "beads.sqlite3")
+	issues := queryAllIssues(t, dbPath)
+
+	if len(issues) != 3 {
+		t.Fatalf("expected 3 issues, got %d", len(issues))
+	}
+
+	// Verify graph_layout.json has correct metrics
+	layoutBytes, err := os.ReadFile(filepath.Join(exportDir, "data", "graph_layout.json"))
+	if err != nil {
+		t.Fatalf("read graph_layout.json: %v", err)
+	}
+
+	var layout struct {
+		Metrics   map[string][5]float64 `json:"metrics"`
+		Links     [][2]string           `json:"links"`
+		NodeCount int                   `json:"node_count"`
+		EdgeCount int                   `json:"edge_count"`
+	}
+	if err := json.Unmarshal(layoutBytes, &layout); err != nil {
+		t.Fatalf("decode graph_layout.json: %v", err)
+	}
+
+	// Verify dependency chain is captured in links
+	if layout.EdgeCount != 2 {
+		t.Errorf("expected 2 edges (dependency chain), got %d", layout.EdgeCount)
+	}
+
+	// Verify detail-1 has high PageRank (blocks others, no blockers)
+	if metrics, ok := layout.Metrics["detail-1"]; ok {
+		pagerank := metrics[0]
+		if pagerank == 0 {
+			t.Error("detail-1 should have non-zero PageRank as it blocks other issues")
+		}
+	} else {
+		t.Error("missing metrics for detail-1")
+	}
+
+	// Verify viewer.js references graph_layout fetch
+	viewerJS, err := os.ReadFile(filepath.Join(exportDir, "viewer.js"))
+	if err != nil {
+		t.Fatalf("read viewer.js: %v", err)
+	}
+	if !strings.Contains(string(viewerJS), "graphDetailNode") {
+		t.Error("viewer.js missing graphDetailNode Alpine state")
+	}
+
+	// Verify graph.js has event handlers for node selection
+	graphJS, err := os.ReadFile(filepath.Join(exportDir, "graph.js"))
+	if err != nil {
+		t.Fatalf("read graph.js: %v", err)
+	}
+	if !strings.Contains(string(graphJS), "graph_layout.json") {
+		t.Error("graph.js missing graph_layout.json fetch")
+	}
+}
+
+// TestExportPages_GraphLayoutFetch verifies graph.js fetches layout correctly
+func TestExportPages_GraphLayoutFetch(t *testing.T) {
+	bv := buildBvBinary(t)
+	stageViewerAssets(t, bv)
+
+	repoDir := createSimpleRepo(t, 3)
+	exportDir := filepath.Join(repoDir, "bv-pages")
+
+	cmd := exec.Command(bv, "--export-pages", exportDir)
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("--export-pages failed: %v\n%s", err, out)
+	}
+
+	// Read graph.js
+	graphJSBytes, err := os.ReadFile(filepath.Join(exportDir, "graph.js"))
+	if err != nil {
+		t.Fatalf("read graph.js: %v", err)
+	}
+	graphJS := string(graphJSBytes)
+
+	// Verify fetch call for graph_layout.json
+	if !strings.Contains(graphJS, "data/graph_layout.json") {
+		t.Error("graph.js missing fetch for data/graph_layout.json")
+	}
+
+	// Verify position application from layout
+	positionMarkers := []string{
+		"positions", // Layout positions object
+		"fx",        // Fixed x position (ForceGraph)
+		"fy",        // Fixed y position (ForceGraph)
+	}
+
+	foundPositionHandling := 0
+	for _, marker := range positionMarkers {
+		if strings.Contains(graphJS, marker) {
+			foundPositionHandling++
+		}
+	}
+	if foundPositionHandling < 2 {
+		t.Errorf("graph.js missing position handling markers (found %d/3)", foundPositionHandling)
+	}
+}
