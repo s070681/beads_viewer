@@ -1209,56 +1209,121 @@ other beads, making it a critical junction.
 
 ## 📋 Kanban Board: Visual Workflow State
 
-The Kanban Board (`b`) provides a **columnar workflow view** that adapts to your project's actual state—empty columns automatically collapse to maximize screen real estate.
+The Kanban Board (`b`) provides a **columnar workflow view** with intelligent swimlane grouping, visual dependency indicators, and rich card details. Empty columns automatically collapse to maximize screen real estate.
 
-### Adaptive Column Layout
+### Swimlane Grouping Modes
+
+Press `s` to cycle through three grouping modes:
+
+| Mode | Columns | Use Case |
+|------|---------|----------|
+| **Status** (default) | Open \| In Progress \| Blocked \| Closed | Workflow state tracking |
+| **Priority** | P0 Critical \| P1 High \| P2 Medium \| P3+ Other | Urgency-based triage |
+| **Type** | Bug \| Feature \| Task \| Epic | Work categorization |
+
+The current mode is shown in the status bar. Each mode uses distinct column colors for quick visual identification.
+
+### Visual Dependency Indicators
+
+Card borders are **color-coded** to show dependency status at a glance:
 
 ```
-+------------------+------------------+------------------+------------------+
-|   OPEN (12)      |  IN PROGRESS (5) |   BLOCKED (3)    |   CLOSED (45)    |
-+------------------+------------------+------------------+------------------+
-| +------------+   | +------------+   | +------------+   | +------------+   |
-| | BUG-123    |   | | FEAT-456   |   | | CRIT-789   |   | | BUG-001    |   |
-| | P0 Critical|   | | P1 High    |   | | P0 Critical|   | | Completed  |   |
-| | Fix crash  |   | | Add OAuth  |   | | Waiting on |   | | Login fix  |   |
-| | @alice     |   | | @bob  v2   |   | | 3 blockers |   | | 3 days ago |   |
-| +------------+   | +------------+   | +------------+   | +------------+   |
-| +------------+   | +------------+   | +------------+   |                  |
-| | FEAT-124   |   | | BUG-457    |   | | FEAT-790   |   |    [ 1/45 ]      |
-| | ...        |   | | ...        |   | | ...        |   |                  |
-+------------------+------------------+------------------+------------------+
+┌─ 🔴 RED ──────────────────┐    ┌─ 🟡 YELLOW ─────────────────┐
+│ BLOCKED                    │    │ HIGH-IMPACT                  │
+│ This card has unresolved   │    │ This card blocks others.     │
+│ dependencies. Work on      │    │ Completing it will unblock   │
+│ blockers first.            │    │ downstream work.             │
+└────────────────────────────┘    └──────────────────────────────┘
+
+┌─ 🟢 GREEN ────────────────┐    ┌─ ⬜ DEFAULT ─────────────────┐
+│ READY TO WORK              │    │ NORMAL                       │
+│ Open issue with no         │    │ Standard priority, no        │
+│ blockers. Pick this up!    │    │ blocking relationships.      │
+└────────────────────────────┘    └──────────────────────────────┘
 ```
 
-### Card Anatomy
+Search matches overlay with **purple** (current match) or **blue** (other matches) borders.
 
-Each card displays rich metadata at a glance:
+### Rich 4-Line Card Format
+
+Each card displays comprehensive metadata in a compact format:
+
+```
+┌────────────────────────────────────┐
+│ 🐛 P1 BUG-1234           3d       │  ← Line 1: Type, Priority, ID, Age
+│ Fix authentication timeout         │  ← Line 2: Title (truncated)
+│ 👤alice  ⛔3  →2  🏷️2             │  ← Line 3: Assignee, Blockers, Blocks, Labels
+│ auth, backend, critical            │  ← Line 4: Label names
+└────────────────────────────────────┘
+```
 
 | Element | Meaning |
 |---------|---------|
-| **Type Icon** | 🐛 Bug, ✨ Feature, 🔥 Critical, 📝 Task |
-| **ID Badge** | Issue identifier (e.g., `BUG-123`) |
-| **Priority Flames** | 🔥🔥🔥 P0, 🔥🔥 P1, 🔥 P2, (none) P3+ |
-| **Title** | Truncated to fit card width |
-| **Metadata Row** | 👤 Assignee, 🔗 Dependency count, 🏷️ Labels |
-| **Age** | Relative time since last update |
+| **Type Icon** | 🐛 Bug, ✨ Feature, 📝 Task, 🎯 Epic, 🔧 Chore |
+| **Priority** | P0 (red), P1 (red), P2 (muted), P3+ (gray) |
+| **Age Color** | 🟢 <7d (fresh), 🟡 7-30d (aging), 🔴 >30d (stale) |
+| **⛔N** | Blocked by N issues |
+| **→N** | Blocks N downstream issues |
+| **🏷️N** | Has N labels |
 
-### Board Features
+### Column Statistics
 
-- **Adaptive Columns:** Empty columns collapse automatically
-- **Priority Sorting:** Cards sorted by priority (P0 first), then creation date
-- **Scroll Indicators:** `↕ 3/12` shows position in long columns
-- **Status Colors:** Column headers color-coded by status
-- **Keyboard Navigation:** Full vim-style movement
+Each column header shows aggregate statistics:
+
+```
+┌─────────────────────────────────────┐
+│  IN PROGRESS (5)  🔥2 ⚠️1          │
+└─────────────────────────────────────┘
+         │          │   │
+         │          │   └── ⚠️ Blocked items in this column
+         │          └────── 🔥 P0/P1 critical items
+         └───────────────── Total count
+```
+
+### Inline Card Expansion
+
+Press `d` to expand the selected card inline, showing:
+- Full issue description
+- All blocking dependencies (with titles)
+- All downstream dependents
+- Complete label list
+- Comments preview
+
+Navigation (`j`/`k`) auto-collapses expanded cards for smooth browsing.
+
+### Detail Panel
+
+Press `Tab` to open a **side panel** with the full issue detail view (on wide terminals). Scroll with `Ctrl+J`/`Ctrl+K`.
 
 ### Board Navigation
 
 | Key | Action |
 |-----|--------|
+| **Movement** | |
 | `h` / `l` | Move between columns |
 | `j` / `k` | Move within column |
-| `g` / `G` | Jump to top/bottom of column |
+| `gg` / `G` | Jump to top/bottom of column |
+| `0` / `$` | First/last item in column |
+| `H` / `L` | Jump to first/last column |
+| `1-4` | Jump directly to column 1-4 |
 | `Ctrl+D` / `Ctrl+U` | Page down/up |
-| `Enter` | Focus selected bead |
+| **Grouping & Display** | |
+| `s` | Cycle swimlane mode (Status → Priority → Type) |
+| `e` | Toggle empty column visibility |
+| `d` | Expand/collapse inline card detail |
+| `Tab` | Toggle side detail panel |
+| **Search** | |
+| `/` | Start search |
+| `n` / `N` | Next/previous search match |
+| `Esc` | Cancel search |
+| **Filtering** | |
+| `o` | Filter: Open only |
+| `c` | Filter: Closed only |
+| `r` | Filter: Ready (no blockers) |
+| **Actions** | |
+| `y` | Copy issue ID to clipboard |
+| `V` | Preview related cass sessions (if cass installed) |
+| `Enter` | Focus selected bead in detail view |
 | `b` | Exit board view |
 
 ---
