@@ -1130,6 +1130,10 @@ func searchFTS(t *testing.T, dbPath, query string) []string {
 		ids = append(ids, id)
 	}
 
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows iteration error: %v", err)
+	}
+
 	return ids
 }
 
