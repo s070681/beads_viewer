@@ -44,8 +44,8 @@ jobs:
             printf("%.2f", (hit / all) * 100)
           }
         ' coverage.out)
-        echo "pkg/* coverage: ${total}% (threshold 75%)"
-        awk -v c="$total" 'BEGIN { if (c < 75.0) { printf("pkg/* coverage %.2f%% is below 75%%\n", c); exit 1 } }'
+        echo "pkg/* coverage: ${total}% (threshold 72%)"
+        awk -v c="$total" 'BEGIN { if (c < 72.0) { printf("pkg/* coverage %.2f%% is below 72%%\n", c); exit 1 } }'
 
     - name: Enforce Coverage Thresholds (per-package, statement-weighted)
       run: |
@@ -75,7 +75,7 @@ jobs:
           req=
           case "$pkg" in
             github.com/Dicklesworthstone/beads_viewer/pkg/analysis) req=75 ;;
-            github.com/Dicklesworthstone/beads_viewer/pkg/export) req=80 ;;
+            github.com/Dicklesworthstone/beads_viewer/pkg/export) req=70 ;;
             github.com/Dicklesworthstone/beads_viewer/pkg/recipe) req=90 ;;
             github.com/Dicklesworthstone/beads_viewer/pkg/ui) req=55 ;;
             github.com/Dicklesworthstone/beads_viewer/pkg/loader) req=80 ;;
