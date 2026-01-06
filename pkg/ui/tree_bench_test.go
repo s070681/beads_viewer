@@ -253,17 +253,25 @@ func BenchmarkTreeNavigation(b *testing.B) {
 	})
 
 	b.Run("ToggleExpand", func(b *testing.B) {
+		nodeCount := tree.NodeCount()
+		if nodeCount == 0 {
+			b.Skip("No nodes to test")
+		}
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			tree.cursor = i % tree.NodeCount()
+			tree.cursor = i % nodeCount
 			tree.ToggleExpand()
 		}
 	})
 
 	b.Run("JumpToParent", func(b *testing.B) {
+		nodeCount := tree.NodeCount()
+		if nodeCount == 0 {
+			b.Skip("No nodes to test")
+		}
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			tree.cursor = (i * 7) % tree.NodeCount() // Jump around
+			tree.cursor = (i * 7) % nodeCount // Jump around
 			tree.JumpToParent()
 		}
 	})
@@ -309,6 +317,10 @@ func BenchmarkSelectByID(b *testing.B) {
 		if i%10 == 0 && node != nil && node.Issue != nil {
 			ids = append(ids, node.Issue.ID)
 		}
+	}
+
+	if len(ids) == 0 {
+		b.Fatal("No IDs collected for benchmark")
 	}
 
 	b.ResetTimer()
