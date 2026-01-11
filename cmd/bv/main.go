@@ -3578,7 +3578,7 @@ func main() {
 		}
 
 		// Build impact network
-		builder := correlation.NewNetworkBuilder(report)
+		builder := correlation.NewNetworkBuilderWithIssues(report, issues)
 		network := builder.Build()
 
 		// Determine if specific bead or full network
