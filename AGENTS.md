@@ -138,41 +138,42 @@ Common pitfalls:
 
 ---
 
-## Issue Tracking with bd (beads)
+## Issue Tracking with br (beads_rust)
 
-All issue tracking goes through **bd**. No other TODO systems.
+All issue tracking goes through **br** (beads_rust). No other TODO systems.
 
 Key invariants:
 
 - `.beads/` is authoritative state and **must always be committed** with code changes.
-- Do not edit `.beads/*.jsonl` directly; only via `bd`.
+- Do not edit `.beads/*.jsonl` directly; only via `br`.
+- **br is non-invasive**: it NEVER executes git commands. You must manually commit `.beads/` changes.
 
 ### Basics
 
 Check ready work:
 
 ```bash
-bd ready --json
+br ready --json
 ```
 
 Create issues:
 
 ```bash
-bd create "Issue title" -t bug|feature|task -p 0-4 --json
-bd create "Issue title" -p 1 --deps discovered-from:bv-123 --json
+br create "Issue title" -t bug|feature|task -p 0-4 --json
+br create "Issue title" -p 1 --deps discovered-from:bv-123 --json
 ```
 
 Update:
 
 ```bash
-bd update bv-42 --status in_progress --json
-bd update bv-42 --priority 1 --json
+br update bv-42 --status in_progress --json
+br update bv-42 --priority 1 --json
 ```
 
 Complete:
 
 ```bash
-bd close bv-42 --reason "Completed" --json
+br close bv-42 --reason "Completed" --json
 ```
 
 Types:
@@ -189,12 +190,17 @@ Priorities:
 
 Agent workflow:
 
-1. `bd ready` to find unblocked work.
-2. Claim: `bd update <id> --status in_progress`.
+1. `br ready` to find unblocked work.
+2. Claim: `br update <id> --status in_progress`.
 3. Implement + test.
 4. If you discover new work, create a new bead with `discovered-from:<parent-id>`.
 5. Close when done.
-6. Commit `.beads/` in the same commit as code changes.
+6. Sync and commit:
+   ```bash
+   br sync --flush-only    # Export to JSONL (no git ops)
+   git add .beads/         # Stage beads changes
+   git commit -m "..."     # Commit with code changes
+   ```
 
 Never:
 
@@ -623,7 +629,8 @@ Treat cass as a way to avoid re-solving problems other agents already handled.
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
    git pull --rebase
-   bd sync --flush-only
+   br sync --flush-only    # Export beads to JSONL (no git ops)
+   git add .beads/         # Stage beads changes
    git push
    git status  # MUST show "up to date with origin"
    ```
