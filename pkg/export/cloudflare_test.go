@@ -9,10 +9,10 @@ import (
 
 func TestParseWranglerWhoami(t *testing.T) {
 	tests := []struct {
-		name       string
-		output     string
-		wantName   string
-		wantID     string
+		name     string
+		output   string
+		wantName string
+		wantID   string
 	}{
 		{
 			name: "standard output",
@@ -34,7 +34,7 @@ user@example.com
 			wantID:   "",
 		},
 		{
-			name: "empty output",
+			name:     "empty output",
 			output:   "",
 			wantName: "",
 			wantID:   "",

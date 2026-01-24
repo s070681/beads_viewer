@@ -81,8 +81,8 @@ type OrphanSignalHit struct {
 // OrphanReport is the JSON output for --robot-orphans.
 type OrphanReport struct {
 	GeneratedAt time.Time           `json:"generated_at"`
-	GitRange    string              `json:"git_range"`         // e.g., "last 30 days"
-	DataHash    string              `json:"data_hash"`         // Beads content hash
+	GitRange    string              `json:"git_range"` // e.g., "last 30 days"
+	DataHash    string              `json:"data_hash"` // Beads content hash
 	Stats       OrphanReportStats   `json:"stats"`
 	Candidates  []OrphanCandidate   `json:"candidates"`
 	ByBead      map[string][]string `json:"by_bead,omitempty"` // BeadID -> []commit SHAs

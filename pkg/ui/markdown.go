@@ -9,11 +9,11 @@ import (
 // MarkdownRenderer provides theme-aware markdown rendering using glamour.
 // It detects the terminal's color scheme and uses appropriate styles.
 type MarkdownRenderer struct {
-	renderer  *glamour.TermRenderer
-	width     int
-	isDark    bool
-	theme     *Theme // nil if using built-in styles, non-nil if using custom theme
-	useTheme  bool   // true if created with NewMarkdownRendererWithTheme
+	renderer *glamour.TermRenderer
+	width    int
+	isDark   bool
+	theme    *Theme // nil if using built-in styles, non-nil if using custom theme
+	useTheme bool   // true if created with NewMarkdownRendererWithTheme
 }
 
 // NewMarkdownRenderer creates a new markdown renderer using built-in styles.

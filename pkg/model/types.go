@@ -118,10 +118,10 @@ const (
 	StatusOpen       Status = "open"
 	StatusInProgress Status = "in_progress"
 	StatusBlocked    Status = "blocked"
-	StatusDeferred   Status = "deferred"  // Deliberately put on ice for later
-	StatusPinned     Status = "pinned"    // Persistent bead that stays open indefinitely
-	StatusHooked     Status = "hooked"    // Work attached to an agent's hook (GUPP)
-	StatusReview     Status = "review"    // Awaiting review before completion
+	StatusDeferred   Status = "deferred" // Deliberately put on ice for later
+	StatusPinned     Status = "pinned"   // Persistent bead that stays open indefinitely
+	StatusHooked     Status = "hooked"   // Work attached to an agent's hook (GUPP)
+	StatusReview     Status = "review"   // Awaiting review before completion
 	StatusClosed     Status = "closed"
 	StatusTombstone  Status = "tombstone" // Soft-deleted issue
 )

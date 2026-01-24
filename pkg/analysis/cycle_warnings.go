@@ -36,7 +36,7 @@ func DetectCycleWarnings(issues []model.Issue, config CycleWarningConfig) []Sugg
 
 	// Build the analyzer to access cycle detection
 	analyzer := NewAnalyzer(issues)
-	
+
 	// Only compute cycles for performance
 	analysisConfig := AnalysisConfig{
 		ComputeCycles:    true,

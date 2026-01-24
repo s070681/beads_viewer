@@ -18,10 +18,10 @@ import (
 
 // Package-level compiled regexes for Cloudflare operations (avoids recompilation per call)
 var (
-	cfPagesDevURLRegex   = regexp.MustCompile(`https://[a-zA-Z0-9-]+\.pages\.dev[^\s]*`)
-	cfCustomDomainRegex  = regexp.MustCompile(`https://[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.[a-zA-Z]{2,}[^\s]*`)
-	cfDeploymentIDRegex  = regexp.MustCompile(`[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}`)
-	cfNonAlphanumRegex   = regexp.MustCompile(`[^a-z0-9-]`)
+	cfPagesDevURLRegex    = regexp.MustCompile(`https://[a-zA-Z0-9-]+\.pages\.dev[^\s]*`)
+	cfCustomDomainRegex   = regexp.MustCompile(`https://[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.[a-zA-Z]{2,}[^\s]*`)
+	cfDeploymentIDRegex   = regexp.MustCompile(`[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}`)
+	cfNonAlphanumRegex    = regexp.MustCompile(`[^a-z0-9-]`)
 	cfMultipleHyphenRegex = regexp.MustCompile(`-+`)
 )
 

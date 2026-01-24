@@ -7,8 +7,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-
-
 // RenderSparkline creates a textual bar chart of value (0.0 - 1.0)
 func RenderSparkline(val float64, width int) string {
 	if width <= 0 {
@@ -16,7 +14,7 @@ func RenderSparkline(val float64, width int) string {
 	}
 
 	chars := []string{" ", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
-	
+
 	if math.IsNaN(val) {
 		val = 0
 	}

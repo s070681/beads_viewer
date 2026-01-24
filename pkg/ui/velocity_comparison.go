@@ -14,23 +14,23 @@ import (
 
 // VelocityComparisonModel shows side-by-side velocity comparison for all labels
 type VelocityComparisonModel struct {
-	data          []velocityRow
-	cursor        int
-	width         int
-	height        int
-	scrollOffset  int
-	theme         Theme
+	data         []velocityRow
+	cursor       int
+	width        int
+	height       int
+	scrollOffset int
+	theme        Theme
 }
 
 // velocityRow holds computed velocity data for display
 type velocityRow struct {
 	Label        string
-	Weeks        [4]int    // W-4, W-3, W-2, W-1 (oldest to newest)
+	Weeks        [4]int // W-4, W-3, W-2, W-1 (oldest to newest)
 	Avg          float64
-	Trend        string    // "accelerating", "decelerating", "stable", "erratic", "insufficient_data"
-	TrendSymbol  string    // Visual indicator
-	SparklineBar string    // ASCII sparkline
-	MaxWeekValue int       // For normalization
+	Trend        string // "accelerating", "decelerating", "stable", "erratic", "insufficient_data"
+	TrendSymbol  string // Visual indicator
+	SparklineBar string // ASCII sparkline
+	MaxWeekValue int    // For normalization
 }
 
 // NewVelocityComparisonModel creates a new velocity comparison view

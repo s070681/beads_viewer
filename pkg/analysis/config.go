@@ -11,12 +11,12 @@ import (
 // This enables size-based algorithm selection for optimal performance.
 type AnalysisConfig struct {
 	// Betweenness centrality (expensive: O(V*E))
-	ComputeBetweenness     bool
-	BetweennessTimeout     time.Duration
-	BetweennessSkipReason  string          // Set when skipped, explains why
-	BetweennessMode        BetweennessMode // "exact", "approximate", or "skip"
-	BetweennessSampleSize  int             // Sample size for approximate mode
-	BetweennessIsApproximate bool          // True if approximation was used (set after computation)
+	ComputeBetweenness       bool
+	BetweennessTimeout       time.Duration
+	BetweennessSkipReason    string          // Set when skipped, explains why
+	BetweennessMode          BetweennessMode // "exact", "approximate", or "skip"
+	BetweennessSampleSize    int             // Sample size for approximate mode
+	BetweennessIsApproximate bool            // True if approximation was used (set after computation)
 
 	// PageRank
 	ComputePageRank    bool
@@ -42,9 +42,9 @@ type AnalysisConfig struct {
 
 	// Advanced graph signals (bv-t1js optimization)
 	// These can be skipped for triage-only mode to reduce latency
-	ComputeKCore       bool // k-core decomposition
+	ComputeKCore        bool // k-core decomposition
 	ComputeArticulation bool // Articulation points
-	ComputeSlack       bool // Scheduling slack
+	ComputeSlack        bool // Scheduling slack
 }
 
 // DefaultConfig returns the default analysis configuration.
@@ -68,9 +68,9 @@ func DefaultConfig() AnalysisConfig {
 		ComputeEigenvector:  true,
 		ComputeCriticalPath: true,
 
-		ComputeKCore:       true,
+		ComputeKCore:        true,
 		ComputeArticulation: true,
-		ComputeSlack:       true,
+		ComputeSlack:        true,
 	}
 	return ApplyEnvOverrides(cfg)
 }
@@ -111,9 +111,9 @@ func ConfigForSize(nodeCount, edgeCount int) AnalysisConfig {
 			ComputeEigenvector:  true,
 			ComputeCriticalPath: true,
 
-			ComputeKCore:       true,
+			ComputeKCore:        true,
 			ComputeArticulation: true,
-			ComputeSlack:       true,
+			ComputeSlack:        true,
 		}
 
 	case nodeCount < 500:
@@ -136,9 +136,9 @@ func ConfigForSize(nodeCount, edgeCount int) AnalysisConfig {
 			ComputeEigenvector:  true,
 			ComputeCriticalPath: true,
 
-			ComputeKCore:       true,
+			ComputeKCore:        true,
 			ComputeArticulation: true,
-			ComputeSlack:       true,
+			ComputeSlack:        true,
 		}
 
 	case nodeCount < 2000:
@@ -157,9 +157,9 @@ func ConfigForSize(nodeCount, edgeCount int) AnalysisConfig {
 			ComputeEigenvector:  true,
 			ComputeCriticalPath: true,
 
-			ComputeKCore:       true,
+			ComputeKCore:        true,
 			ComputeArticulation: true,
-			ComputeSlack:       true,
+			ComputeSlack:        true,
 		}
 
 		// Use approximate betweenness for large sparse graphs, skip for dense
@@ -186,16 +186,16 @@ func ConfigForSize(nodeCount, edgeCount int) AnalysisConfig {
 			ComputePageRank: true,
 			PageRankTimeout: 200 * time.Millisecond,
 
-			ComputeCycles:       false,
-			CyclesSkipReason:    "graph too large (>2000 nodes)",
-			MaxCyclesToStore:    10,
+			ComputeCycles:    false,
+			CyclesSkipReason: "graph too large (>2000 nodes)",
+			MaxCyclesToStore: 10,
 
 			ComputeEigenvector:  true,
 			ComputeCriticalPath: true,
 
-			ComputeKCore:       true,
+			ComputeKCore:        true,
 			ComputeArticulation: true,
-			ComputeSlack:       true,
+			ComputeSlack:        true,
 		}
 
 		// Only compute HITS for very sparse XL graphs
@@ -231,9 +231,9 @@ func FullAnalysisConfig() AnalysisConfig {
 		ComputeEigenvector:  true,
 		ComputeCriticalPath: true,
 
-		ComputeKCore:       true,
+		ComputeKCore:        true,
 		ComputeArticulation: true,
-		ComputeSlack:       true,
+		ComputeSlack:        true,
 	}
 	return ApplyEnvOverrides(cfg)
 }
@@ -244,10 +244,10 @@ func FullAnalysisConfig() AnalysisConfig {
 // (bv-t1js optimization)
 func TriageConfig() AnalysisConfig {
 	cfg := AnalysisConfig{
-		ComputeBetweenness: true,
-		BetweennessMode:    BetweennessApproximate,
+		ComputeBetweenness:    true,
+		BetweennessMode:       BetweennessApproximate,
 		BetweennessSampleSize: 50, // Fast approximation
-		BetweennessTimeout: 200 * time.Millisecond,
+		BetweennessTimeout:    200 * time.Millisecond,
 
 		ComputePageRank: true,
 		PageRankTimeout: 200 * time.Millisecond,

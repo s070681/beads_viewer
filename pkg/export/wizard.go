@@ -739,8 +739,8 @@ func (w *Wizard) PerformDeploy() (*WizardResult, error) {
 			Private:          w.config.RepoPrivate,
 			Description:      w.config.RepoDescription,
 			BundlePath:       w.bundlePath,
-			SkipConfirmation: true,           // Already confirmed in wizard prerequisites
-			ForceOverwrite:   w.isUpdate,     // Auto-overwrite when updating existing deployment
+			SkipConfirmation: true,       // Already confirmed in wizard prerequisites
+			ForceOverwrite:   w.isUpdate, // Auto-overwrite when updating existing deployment
 		}
 
 		deployResult, err := DeployToGitHubPages(deployConfig)

@@ -1350,38 +1350,38 @@ func TestComputeTriageFromAnalyzer_Empty(t *testing.T) {
 func TestBuildTopPicks_FiltersBlockedItems(t *testing.T) {
 	recommendations := []Recommendation{
 		{
-			ID:         "blocked-high-score",
-			Title:      "Blocked but high score",
-			Score:      100.0,
-			BlockedBy:  []string{"blocker-1"},
+			ID:          "blocked-high-score",
+			Title:       "Blocked but high score",
+			Score:       100.0,
+			BlockedBy:   []string{"blocker-1"},
 			UnblocksIDs: []string{},
 		},
 		{
-			ID:         "actionable-1",
-			Title:      "Actionable item 1",
-			Score:      80.0,
-			BlockedBy:  nil, // Not blocked
+			ID:          "actionable-1",
+			Title:       "Actionable item 1",
+			Score:       80.0,
+			BlockedBy:   nil, // Not blocked
 			UnblocksIDs: []string{"downstream-1"},
 		},
 		{
-			ID:         "blocked-medium-score",
-			Title:      "Another blocked item",
-			Score:      70.0,
-			BlockedBy:  []string{"blocker-2", "blocker-3"},
+			ID:          "blocked-medium-score",
+			Title:       "Another blocked item",
+			Score:       70.0,
+			BlockedBy:   []string{"blocker-2", "blocker-3"},
 			UnblocksIDs: []string{},
 		},
 		{
-			ID:         "actionable-2",
-			Title:      "Actionable item 2",
-			Score:      60.0,
-			BlockedBy:  []string{}, // Empty slice = not blocked
+			ID:          "actionable-2",
+			Title:       "Actionable item 2",
+			Score:       60.0,
+			BlockedBy:   []string{}, // Empty slice = not blocked
 			UnblocksIDs: []string{},
 		},
 		{
-			ID:         "actionable-3",
-			Title:      "Actionable item 3",
-			Score:      50.0,
-			BlockedBy:  nil,
+			ID:          "actionable-3",
+			Title:       "Actionable item 3",
+			Score:       50.0,
+			BlockedBy:   nil,
 			UnblocksIDs: []string{"downstream-2", "downstream-3"},
 		},
 	}
