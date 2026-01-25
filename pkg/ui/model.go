@@ -16,6 +16,7 @@ import (
 	"github.com/Dicklesworthstone/beads_viewer/pkg/baseline"
 	"github.com/Dicklesworthstone/beads_viewer/pkg/cass"
 	"github.com/Dicklesworthstone/beads_viewer/pkg/correlation"
+	"github.com/Dicklesworthstone/beads_viewer/pkg/debug"
 	"github.com/Dicklesworthstone/beads_viewer/pkg/drift"
 	"github.com/Dicklesworthstone/beads_viewer/pkg/export"
 	"github.com/Dicklesworthstone/beads_viewer/pkg/instance"
@@ -1807,6 +1808,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 		reloadStart := time.Now()
+		profileRefresh := debug.Enabled()
+		var refreshTimings map[string]time.Duration
+		recordTiming := func(name string, d time.Duration) {
+			if !profileRefresh {
+				return
+			}
+			if refreshTimings == nil {
+				refreshTimings = make(map[string]time.Duration, 12)
+			}
+			refreshTimings[name] = d
+			debug.LogTiming("refresh."+name, d)
+		}
+		if profileRefresh {
+			debug.Log("refresh: file change detected path=%s", m.beadsPath)
+		}
 
 		// Clear ephemeral overlays tied to old data
 		m.clearAttentionOverlay()
@@ -1824,12 +1840,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Reload issues from disk
 		// Use custom warning handler to prevent stderr pollution during TUI render (bv-fix)
 		var reloadWarnings []string
+		var loadStart time.Time
+		if profileRefresh {
+			loadStart = time.Now()
+		}
 		loadedIssues, err := loader.LoadIssuesFromFileWithOptionsPooled(m.beadsPath, loader.ParseOptions{
 			WarningHandler: func(msg string) {
 				reloadWarnings = append(reloadWarnings, msg)
 			},
 			BufferSize: envMaxLineSizeBytes(),
 		})
+		if profileRefresh {
+			recordTiming("load_issues", time.Since(loadStart))
+		}
 		if err != nil {
 			m.statusMsg = fmt.Sprintf("Reload error: %v", err)
 			m.statusIsError = true
@@ -1854,6 +1877,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Apply default sorting (Open first, Priority, Date)
+		var sortStart time.Time
+		if profileRefresh {
+			sortStart = time.Now()
+		}
 		sort.Slice(newIssues, func(i, j int) bool {
 			iClosed := isClosedLikeStatus(newIssues[i].Status)
 			jClosed := isClosedLikeStatus(newIssues[j].Status)
@@ -1865,26 +1892,48 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return newIssues[i].CreatedAt.After(newIssues[j].CreatedAt)
 		})
+		if profileRefresh {
+			recordTiming("sort_issues", time.Since(sortStart))
+		}
 
 		// Recompute analysis (async Phase 1/Phase 2) with caching
 		m.issues = newIssues
+		var analysisStart time.Time
+		if profileRefresh {
+			analysisStart = time.Now()
+		}
 		cachedAnalyzer := analysis.NewCachedAnalyzer(newIssues, nil)
 		m.analyzer = cachedAnalyzer.Analyzer
 		m.analysis = cachedAnalyzer.AnalyzeAsync(context.Background())
 		cacheHit := cachedAnalyzer.WasCacheHit()
+		if profileRefresh {
+			recordTiming("phase1_setup", time.Since(analysisStart))
+			debug.Log("refresh.phase1_cache_hit=%t issues=%d", cacheHit, len(newIssues))
+		}
 		m.labelHealthCached = false
 		m.attentionCached = false
 
 		// Rebuild lookup map
+		var mapStart time.Time
+		if profileRefresh {
+			mapStart = time.Now()
+		}
 		m.issueMap = make(map[string]*model.Issue, len(newIssues))
 		for i := range m.issues {
 			m.issueMap[m.issues[i].ID] = &m.issues[i]
+		}
+		if profileRefresh {
+			recordTiming("issue_map", time.Since(mapStart))
 		}
 
 		// Clear stale priority hints (will be repopulated after Phase 2)
 		m.priorityHints = make(map[string]*analysis.PriorityRecommendation)
 
 		// Recompute stats
+		var statsStart time.Time
+		if profileRefresh {
+			statsStart = time.Now()
+		}
 		m.countOpen, m.countReady, m.countBlocked, m.countClosed = 0, 0, 0, 0
 		for i := range m.issues {
 			issue := &m.issues[i]
@@ -1911,13 +1960,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.countReady++
 			}
 		}
+		if profileRefresh {
+			recordTiming("counts", time.Since(statsStart))
+		}
 
 		// Recompute alerts for refreshed dataset
+		var alertsStart time.Time
+		if profileRefresh {
+			alertsStart = time.Now()
+		}
 		m.alerts, m.alertsCritical, m.alertsWarning, m.alertsInfo = computeAlerts(m.issues, m.analysis, m.analyzer)
+		if profileRefresh {
+			recordTiming("alerts", time.Since(alertsStart))
+		}
 		m.dismissedAlerts = make(map[string]bool)
 		m.showAlertsPanel = false
 
 		// Rebuild list items (preserve triage data to avoid flicker)
+		var listStart time.Time
+		if profileRefresh {
+			listStart = time.Now()
+		}
 		items := make([]list.Item, len(m.issues))
 		for i := range m.issues {
 			item := IssueItem{
@@ -1935,6 +1998,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			item.IsBlocker = m.blockerSet[m.issues[i].ID]
 			item.UnblocksCount = len(m.unblocksMap[m.issues[i].ID])
 			items[i] = item
+		}
+		if profileRefresh {
+			recordTiming("list_items", time.Since(listStart))
 		}
 		m.updateSemanticIDs(items)
 		m.clearSemanticScores()
@@ -1966,7 +2032,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		needsGraph := m.isGraphView
 		var ins analysis.Insights
 		if needsInsights || needsGraph {
+			var insightsStart time.Time
+			if profileRefresh {
+				insightsStart = time.Now()
+			}
 			ins = m.analysis.GenerateInsights(len(m.issues))
+			if profileRefresh {
+				recordTiming("insights_generate", time.Since(insightsStart))
+			}
 		}
 		if needsInsights {
 			oldTopPicks := m.insightsPanel.topPicks
@@ -1986,6 +2059,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.insightsPanel.SetSize(m.width, bodyHeight)
 		}
 		if m.showAttentionView {
+			var attentionStart time.Time
+			if profileRefresh {
+				attentionStart = time.Now()
+			}
 			cfg := analysis.DefaultLabelHealthConfig()
 			m.attentionCache = analysis.ComputeLabelAttentionScores(m.issues, cfg, time.Now().UTC())
 			m.attentionCached = true
@@ -1998,9 +2075,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				panelHeight = 3
 			}
 			m.insightsPanel.SetSize(m.width, panelHeight)
+			if profileRefresh {
+				recordTiming("attention_view", time.Since(attentionStart))
+			}
 		}
 		if needsGraph || m.isBoardView {
+			var graphStart time.Time
+			if profileRefresh {
+				graphStart = time.Now()
+			}
 			m.refreshBoardAndGraphForCurrentFilter()
+			if profileRefresh {
+				recordTiming("board_graph", time.Since(graphStart))
+			}
 		}
 
 		// Re-apply recipe filter if active
@@ -2047,8 +2134,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusMsg += fmt.Sprintf(" (%d warnings)", len(reloadWarnings))
 		}
 		reloadDuration := time.Since(reloadStart)
+		if profileRefresh {
+			recordTiming("total", reloadDuration)
+		}
 		if reloadDuration >= 500*time.Millisecond {
 			m.statusMsg += fmt.Sprintf(" in %s", formatReloadDuration(reloadDuration))
+		}
+		if profileRefresh && len(refreshTimings) > 0 {
+			addTiming := func(label, key string) {
+				if d, ok := refreshTimings[key]; ok && d > 0 {
+					m.statusMsg += fmt.Sprintf(" %s=%s", label, formatReloadDuration(d))
+				}
+			}
+			m.statusMsg += " [debug"
+			addTiming("load", "load_issues")
+			addTiming("sort", "sort_issues")
+			addTiming("phase1", "phase1_setup")
+			addTiming("alerts", "alerts")
+			addTiming("list", "list_items")
+			addTiming("graph", "board_graph")
+			addTiming("total", "total")
+			m.statusMsg += "]"
 		}
 		// Auto-enable background mode after slow sync reloads (opt-out via BV_BACKGROUND_MODE=0).
 		autoEnabled := false
