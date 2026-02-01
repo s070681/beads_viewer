@@ -25,6 +25,7 @@ import (
 	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
 
+	"github.com/Dicklesworthstone/beads_viewer/internal/datasource"
 	"github.com/Dicklesworthstone/beads_viewer/pkg/analysis"
 	"github.com/Dicklesworthstone/beads_viewer/pkg/baseline"
 	"github.com/Dicklesworthstone/beads_viewer/pkg/correlation"
@@ -894,7 +895,7 @@ func main() {
 			}
 
 			// Load issues to get score breakdown
-			issues, err := loader.LoadIssues("")
+			issues, err := datasource.LoadIssues("")
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error loading issues: %v\n", err)
 				os.Exit(1)
@@ -1112,7 +1113,7 @@ func main() {
 	} else {
 		// Load from single repo (original behavior)
 		var err error
-		issues, err = loader.LoadIssues("")
+		issues, err = datasource.LoadIssues("")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error loading beads: %v\n", err)
 			fmt.Fprintln(os.Stderr, "Make sure you are in a project initialized with 'bd init'.")
@@ -1639,7 +1640,7 @@ func main() {
 					if *workspaceConfig != "" {
 						freshIssues, _, err = workspace.LoadAllFromConfig(context.Background(), *workspaceConfig)
 					} else {
-						freshIssues, err = loader.LoadIssues("")
+						freshIssues, err = datasource.LoadIssues("")
 					}
 					if err != nil {
 						fmt.Printf("  → Error reloading issues: %v\n", err)
@@ -3618,7 +3619,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		issues, err := loader.LoadIssues(cwd)
+		issues, err := datasource.LoadIssues(cwd)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error loading beads: %v\n", err)
 			os.Exit(1)
@@ -3695,7 +3696,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		issues, err := loader.LoadIssues(cwd)
+		issues, err := datasource.LoadIssues(cwd)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error loading beads: %v\n", err)
 			os.Exit(1)
@@ -3780,7 +3781,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		issues, err := loader.LoadIssues(cwd)
+		issues, err := datasource.LoadIssues(cwd)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error loading beads: %v\n", err)
 			os.Exit(1)
@@ -3839,7 +3840,7 @@ func main() {
 		}
 
 		// Load issues
-		issues, err := loader.LoadIssues(cwd)
+		issues, err := datasource.LoadIssues(cwd)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error loading beads: %v\n", err)
 			os.Exit(1)
@@ -3908,7 +3909,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		issues, err := loader.LoadIssues(cwd)
+		issues, err := datasource.LoadIssues(cwd)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error loading beads: %v\n", err)
 			os.Exit(1)
