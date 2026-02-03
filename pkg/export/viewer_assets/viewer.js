@@ -458,6 +458,26 @@ async function cacheToOPFS(data, cacheKey) {
 }
 
 /**
+ * Remove stale OPFS cache entries (old hashes and the legacy "default" key).
+ * Runs in the background after a successful cache hit to free storage.
+ */
+async function cleanStaleOPFS(currentCacheKey) {
+  if (!('storage' in navigator) || !navigator.storage.getDirectory) return;
+  try {
+    const root = await navigator.storage.getDirectory();
+    const currentFile = `beads-${currentCacheKey}.sqlite3`;
+    for await (const [name] of root.entries()) {
+      if (name.startsWith('beads-') && name.endsWith('.sqlite3') && name !== currentFile) {
+        await root.removeEntry(name);
+        console.log(`[OPFS] Removed stale cache: ${name}`);
+      }
+    }
+  } catch (err) {
+    // Non-critical; ignore cleanup failures
+  }
+}
+
+/**
  * Fetch JSON file
  */
 async function fetchJSON(url) {
@@ -524,6 +544,8 @@ async function loadDatabase(updateStatus) {
       DB_STATE.db = new SQL.Database(cached);
       DB_STATE.source = 'cache';
       DIAGNOSTICS.dbSource = 'cache';
+      // Clean up stale cache entries in the background
+      cleanStaleOPFS(DB_STATE.cacheKey).catch(() => {});
       return DB_STATE.db;
     }
   }
