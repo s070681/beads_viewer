@@ -50,7 +50,7 @@ func TestFindJSONLPath_NoJSONLFiles(t *testing.T) {
 	}
 }
 
-func TestFindJSONLPath_PrefersIssuesJSONL(t *testing.T) {
+func TestFindJSONLPath_PrefersBeadsJSONL(t *testing.T) {
 	dir := t.TempDir()
 	// Create multiple JSONL files
 	os.WriteFile(filepath.Join(dir, "issues.jsonl"), []byte(`{"id":"1"}`), 0644)
@@ -61,25 +61,25 @@ func TestFindJSONLPath_PrefersIssuesJSONL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	// Per beads upstream, issues.jsonl is canonical
-	if filepath.Base(path) != "issues.jsonl" {
-		t.Errorf("Expected issues.jsonl to be preferred (canonical per beads upstream), got: %s", path)
+	// Per bv-96, beads.jsonl is canonical (matches what bd writes in stealth mode)
+	if filepath.Base(path) != "beads.jsonl" {
+		t.Errorf("Expected beads.jsonl to be preferred (matches bd stealth mode), got: %s", path)
 	}
 }
 
-func TestFindJSONLPath_FallsBackToBeadsJSONL(t *testing.T) {
+func TestFindJSONLPath_FallsBackToIssuesJSONL(t *testing.T) {
 	dir := t.TempDir()
-	// Create beads.jsonl only (no issues.jsonl)
-	os.WriteFile(filepath.Join(dir, "beads.jsonl"), []byte(`{"id":"1"}`), 0644)
+	// Create issues.jsonl only (no beads.jsonl)
+	os.WriteFile(filepath.Join(dir, "issues.jsonl"), []byte(`{"id":"1"}`), 0644)
 	os.WriteFile(filepath.Join(dir, "other.jsonl"), []byte(`{"id":"2"}`), 0644)
 
 	path, err := loader.FindJSONLPath(dir)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	// beads.jsonl is second priority after issues.jsonl
-	if filepath.Base(path) != "beads.jsonl" {
-		t.Errorf("Expected beads.jsonl as fallback, got: %s", path)
+	// issues.jsonl is second priority after beads.jsonl (bv-96)
+	if filepath.Base(path) != "issues.jsonl" {
+		t.Errorf("Expected issues.jsonl as fallback, got: %s", path)
 	}
 }
 
@@ -99,9 +99,9 @@ func TestFindJSONLPath_FallsBackToBeadsBase(t *testing.T) {
 	}
 }
 
-func TestFindJSONLPath_FallsBackToIssues(t *testing.T) {
+func TestFindJSONLPath_OnlyIssuesJSONL(t *testing.T) {
 	dir := t.TempDir()
-	// Create only issues.jsonl
+	// Create only issues.jsonl (beads.jsonl not present)
 	os.WriteFile(filepath.Join(dir, "issues.jsonl"), []byte(`{"id":"1"}`), 0644)
 
 	path, err := loader.FindJSONLPath(dir)
