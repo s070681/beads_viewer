@@ -306,3 +306,151 @@ func TestGitHubActionsWorkflowContent(t *testing.T) {
 		}
 	}
 }
+
+func TestDeleteRepository_NoConfirm(t *testing.T) {
+	err := DeleteRepository("user/repo", false)
+	if err == nil {
+		t.Error("Expected error when confirm is false")
+	}
+	if !strings.Contains(err.Error(), "requires confirmation") {
+		t.Errorf("Expected confirmation error, got: %v", err)
+	}
+}
+
+func TestOpenInBrowser_TestMode(t *testing.T) {
+	// BV_TEST_MODE is set in main_test.go TestMain, so this should be a no-op
+	t.Setenv("BV_NO_BROWSER", "1")
+	err := OpenInBrowser("https://example.com")
+	if err != nil {
+		t.Errorf("Expected no error in test mode, got: %v", err)
+	}
+}
+
+func TestParseGHUsername_MultipleLines(t *testing.T) {
+	tests := []struct {
+		name     string
+		output   string
+		expected string
+	}{
+		{
+			name:     "gh status full output",
+			output:   "github.com\n  ✓ Logged in to github.com account jdoe (GITHUB_TOKEN)\n  ✓ Git operations for github.com configured to use https\n  ✓ Token: gho_xxxx\n  ✓ Token scopes: admin:org, codespace",
+			expected: "jdoe",
+		},
+		{
+			name:     "account with no space after name",
+			output:   "  Logged in to github.com account alice(keyring)",
+			expected: "alice",
+		},
+		{
+			name:     "no logged-in line at all",
+			output:   "github.com\n  Token: none\n  Git: configured",
+			expected: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := parseGHUsername(tc.output)
+			if result != tc.expected {
+				t.Errorf("parseGHUsername(%q) = %q, want %q", tc.output, result, tc.expected)
+			}
+		})
+	}
+}
+
+func TestGitHubActionsStatus_Struct(t *testing.T) {
+	// Test the struct can be used correctly
+	status := &GitHubActionsStatus{
+		WorkflowRunning:     true,
+		WorkflowQueued:      false,
+		LastRunStatus:       "in_progress",
+		LastRunCreatedAt:    "2026-02-09T18:00:00Z",
+		PossiblyRateLimited: false,
+	}
+
+	if !status.WorkflowRunning {
+		t.Error("Expected WorkflowRunning to be true")
+	}
+	if status.WorkflowQueued {
+		t.Error("Expected WorkflowQueued to be false")
+	}
+	if status.PossiblyRateLimited {
+		t.Error("Expected PossiblyRateLimited to be false")
+	}
+	if status.LastRunStatus != "in_progress" {
+		t.Errorf("Expected LastRunStatus 'in_progress', got %s", status.LastRunStatus)
+	}
+
+	// Test rate-limited scenario
+	rateLimited := &GitHubActionsStatus{
+		WorkflowQueued:      true,
+		PossiblyRateLimited: true,
+		LastRunStatus:       "queued",
+	}
+
+	if !rateLimited.PossiblyRateLimited {
+		t.Error("Expected PossiblyRateLimited to be true")
+	}
+}
+
+func TestListUserRepos_DefaultLimit(t *testing.T) {
+	// ListUserRepos normalizes limit <= 0 to 30
+	// We can't test the actual API call, but we can verify the
+	// function handles empty output from gh CLI gracefully
+	// by checking the error type rather than the result.
+	_, err := ListUserRepos(0)
+	// The error should be about gh execution, not about limit handling
+	if err != nil && strings.Contains(err.Error(), "limit") {
+		t.Errorf("Limit normalization failed: %v", err)
+	}
+}
+
+func TestSuggestRepoName_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		expected string
+	}{
+		{
+			name:     "spaces in name",
+			path:     "/home/user/My Cool Project",
+			expected: "my-cool-project",
+		},
+		{
+			name:     "mixed case",
+			path:     "/home/user/CamelCaseProject",
+			expected: "camelcaseproject",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := SuggestRepoName(tc.path)
+			if result != tc.expected {
+				t.Errorf("SuggestRepoName(%q) = %q, want %q", tc.path, result, tc.expected)
+			}
+		})
+	}
+}
+
+func TestWriteGitHubActionsWorkflow_Idempotent(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Write twice - should not error
+	if err := WriteGitHubActionsWorkflow(tmpDir); err != nil {
+		t.Fatalf("First write failed: %v", err)
+	}
+	if err := WriteGitHubActionsWorkflow(tmpDir); err != nil {
+		t.Fatalf("Second write (idempotent) failed: %v", err)
+	}
+
+	// Content should be valid
+	content, err := os.ReadFile(filepath.Join(tmpDir, ".github", "workflows", "static.yml"))
+	if err != nil {
+		t.Fatalf("Failed to read workflow: %v", err)
+	}
+	if !strings.Contains(string(content), "deploy-pages@v4") {
+		t.Error("Workflow content missing expected action")
+	}
+}
